@@ -25,6 +25,8 @@
     "checkout:purge": "node --experimental-strip-types --conditions=react-server --env-file-if-exists=.env.local scripts/purge-checkout.mts",
     "payments:reconcile": "node --experimental-strip-types --conditions=react-server --env-file-if-exists=.env.local scripts/reconcile-payments.mts",
     "test:payments": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/payments.test.mts",
+    "test:orders": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/orders.test.mts",
+    "test:orders:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/orders.browser.mts",
     "test:payments:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/payments.browser.mts"
   },
   "dependencies": {

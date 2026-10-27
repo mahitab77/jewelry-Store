@@ -12,11 +12,12 @@ import { cartFixture } from "./cart-fixture.mts";
 import { mockCloudinaryConfiguration } from "./cloudinary-mock.mts";
 import { paymentFixture } from "./payment-fixture.mts";
 import { paymentEnvironment } from "./paymob-mock.mts";
+import { orderFixture } from "./order-fixture.mts";
 
 const moduleName = process.env.PLAYWRIGHT_MODULE ? pathToFileURL(resolve(process.env.PLAYWRIGHT_MODULE)).href : "playwright";
 const { chromium } = await import(moduleName);
 
-export function adminBrowserHarness(catalogue = false, cart = false, payments = false) {
+export function adminBrowserHarness(catalogue = false, cart = false, payments = false, orders = false) {
   let browser: Awaited<ReturnType<typeof chromium.launch>>;
   let fixture: Awaited<ReturnType<typeof adminFixture>> & Partial<Pick<Awaited<ReturnType<typeof cartFixture>>, "cartUrl" | "readerUrl">> & Partial<Pick<Awaited<ReturnType<typeof paymentFixture>>, "paymentUrl">>;
   let tls: Server;
@@ -31,8 +32,8 @@ export function adminBrowserHarness(catalogue = false, cart = false, payments = 
         PAYMENT_DATABASE_URL:payments&&configured?fixture.paymentUrl!:"",PAYMENTS_BROWSER_PRELOAD:payments&&configured?"1":"", NODE_ENV: "production", DATABASE_URL: cart && configured ? fixture.readerUrl! : catalogue && configured ? fixture.authConfig.databaseUrl : "",
         CART_DATABASE_URL: cart && configured ? fixture.cartUrl! : "", CART_ORIGIN: cart && configured ? origin : "",
         CHECKOUT_DRAFT_RETENTION_READY: cart && configured ? "true" : "",
-        ADMIN_DATABASE_URL: configured && !cart ? fixture.authConfig.databaseUrl : "", BETTER_AUTH_URL: configured && !cart ? origin : "",
-        BETTER_AUTH_SECRET: configured && !cart ? fixture.authConfig.secret : "", ADMIN_TRUSTED_IP_HEADER: "",
+        ADMIN_DATABASE_URL: configured && (!cart || orders) ? fixture.authConfig.databaseUrl : "", BETTER_AUTH_URL: configured && (!cart || orders) ? origin : "",
+        BETTER_AUTH_SECRET: configured && (!cart || orders) ? fixture.authConfig.secret : "", ADMIN_TRUSTED_IP_HEADER: "",
         CLOUDINARY_CLOUD_NAME: catalogue && configured ? mockCloudinaryConfiguration.cloudName : "",
         CLOUDINARY_API_KEY: catalogue && configured ? mockCloudinaryConfiguration.apiKey : "",
         CLOUDINARY_API_SECRET: catalogue && configured ? mockCloudinaryConfiguration.apiSecret : "",
@@ -48,7 +49,7 @@ export function adminBrowserHarness(catalogue = false, cart = false, payments = 
     throw new Error("Temporary admin server did not become ready.");
   }
   before(async () => {
-    fixture = payments ? await paymentFixture(origin) : cart ? await cartFixture(origin) : catalogue ? await catalogueFixture(origin) : await adminFixture(origin);
+    fixture = orders ? await orderFixture(origin) : payments ? await paymentFixture(origin) : cart ? await cartFixture(origin) : catalogue ? await catalogueFixture(origin) : await adminFixture(origin);
     if(payments)for(const[key,value]of Object.entries(paymentEnvironment))if(/KEY|SECRET/.test(key))secrets.push(value);
     if (!process.env.ADMIN_TEST_TLS_KEY || !process.env.ADMIN_TEST_TLS_CERT) throw new Error("Set disposable local TLS paths; production cookie security is never disabled.");
     await server(3120, true); await server(3121, false);
