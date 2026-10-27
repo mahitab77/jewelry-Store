@@ -1,0 +1,28 @@
+.root { min-height: 100vh; color: var(--ivory); background: var(--black); }
+.header { border-bottom: 1px solid var(--border); background: rgba(9,8,7,.78); }
+.header > div { min-height: 112px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.header img { width: 112px; height: auto; }
+.eyebrow { color: var(--gold); font-size: .65rem; font-weight: 700; letter-spacing: .22em; line-height: 1.8; text-transform: uppercase; }
+.main { padding-block: clamp(2.5rem,6vw,5rem); }
+.main h1 { margin-block: 1.5rem; font-size: clamp(2.5rem,5vw,4rem); line-height: 1.06; overflow-wrap: anywhere; }
+.main p { color: var(--beige); line-height: 1.85; }
+.loginPanel { max-width: 520px; margin-inline: auto; padding: clamp(1.5rem,5vw,3rem); background: linear-gradient(135deg,rgba(217,189,122,.08),rgba(21,63,54,.1)); }
+.form { display: grid; margin-top: 2rem; gap: .75rem; }
+.form label { color: var(--ivory); font-size: .85rem; }
+.form input { width: 100%; min-width: 0; min-height: 48px; border: 1px solid var(--border); padding: .75rem; background: var(--black); color: var(--ivory); border-radius: 0; }
+.form input + label { margin-top: .75rem; }
+.button { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: .85rem 1.5rem; font-size: .7rem; line-height: 1.6; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
+.form .button { margin-top: 1rem; }
+.button:disabled { opacity: .65; cursor: wait; }
+.main .error { color: var(--ivory); padding: 1rem; border-left: 2px solid var(--gold); }
+.heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 2rem; }
+.plans { padding-block: 4rem; }
+.plans h2 { max-width: 25ch; font-size: clamp(2rem,4vw,3rem); line-height: 1.15; margin-bottom: 1.5rem; }
+.cards { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1.5rem; margin-top: 2rem; }
+.cards article { border: 1px solid var(--border); padding: 1.5rem; min-width: 0; }
+.cards h3 { font-family: var(--font-cormorant),Georgia,serif; font-size: 2rem; line-height: 1.2; margin-bottom: 1rem; }
+.cards span { display: block; color: var(--beige); font-size: .75rem; margin-top: 1.5rem; }
+.root :is(a,button,input):focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
+.skip { position: absolute; top: -100px; left: 1rem; z-index: 100; background: var(--black); padding: 1rem; color: var(--ivory); }
+.skip:focus { top: 1rem; }
+@media (max-width: 767px) { .cards { grid-template-columns: minmax(0,1fr); } .heading { flex-direction: column; } .header img { width: 90px; } .header .eyebrow { max-width: 18ch; text-align: right; } }

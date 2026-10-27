@@ -12,10 +12,14 @@
     "test:db": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/database.test.mts",
     "test:storefront": "node --experimental-strip-types --test tests/storefront.test.mts",
     "test:storefront:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/storefront.browser.mts",
-    "test:editorial": "node --experimental-strip-types --conditions=react-server --test tests/editorial.test.mts"
+    "test:editorial": "node --experimental-strip-types --conditions=react-server --test tests/editorial.test.mts",
+    "admin:provision": "node --experimental-strip-types --conditions=react-server --env-file-if-exists=.env.local scripts/provision-admin.mts",
+    "test:admin": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/admin.test.mts",
+    "test:admin:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/admin.browser.mts"
   },
   "dependencies": {
-    "next": "16.2.6",
+    "better-auth": "1.7.14",
+    "next": "16.4.3",
     "pg": "8.23.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -28,7 +32,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.6",
+    "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
