@@ -9,7 +9,10 @@
     "lint": "eslint",
     "db:migrate": "node --experimental-strip-types --conditions=react-server --env-file-if-exists=.env.local scripts/database.mts migrate",
     "db:seed": "node --experimental-strip-types --conditions=react-server --env-file-if-exists=.env.local scripts/database.mts seed",
-    "test:db": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/database.test.mts"
+    "test:db": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/database.test.mts",
+    "test:storefront": "node --experimental-strip-types --test tests/storefront.test.mts",
+    "test:storefront:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/storefront.browser.mts",
+    "test:editorial": "node --experimental-strip-types --conditions=react-server --test tests/editorial.test.mts"
   },
   "dependencies": {
     "next": "16.2.6",

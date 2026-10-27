@@ -184,3 +184,45 @@ Cloudflare Workers compatibility is **not verified**. Its [PostgreSQL guide](htt
 Phase 01's five migrations and rollback-only constraint test passed on PostgreSQL 17.10. Phase 02's six migrations and 15 database integration tests passed on another isolated loopback cluster, including original-baseline verification, checksum adoption and non-superuser reads. Frontend lint, TypeScript checking and the production build were checked without a configured database. Approved source/assets, the architecture baseline and the first five migrations remain unchanged. Node 22.17's type-stripping/module-detection warnings do not indicate test failures.
 
 Remaining validation belongs to later phases: concurrent purchases, authenticated/out-of-order/late Paymob callbacks, authorization/privacy controls, hosted migration execution, actual Neon connectivity and Cloudflare runtime compatibility. No checkout or hosted-integration readiness is implied by local catalogue tests.
+
+## Phase 03: public catalogue pages
+
+The new `/collections`, `/collections/[category]`, `/collections/edit/[slug]` and `/jewels/[slug]` routes use the six existing repository functions without changing them or any migration. Category paths use actual published category slugs; the permanent development seed therefore uses `/collections/dev-rings`, while a real `rings` record resolves at `/collections/rings`. Editorial collections have a separate `edit` path to avoid category ambiguity. The approved homepage and its existing anchor navigation are unchanged.
+
+The route group uses request-time `connection()` and asynchronous params/searchParams. It does not access the database during builds. Per-request React caching shares metadata/page reads without persisting results between requests. Listings use 12 records per page, validated `page`/`sort` parameters and repository ordering; invalid selections redirect to the route's first page. Unknown/unpublished records use `notFound()`. Empty selections, missing configuration and connection failure have separate presentations; database outages render an informative, unindexed page rather than a false 404.
+
+New styles are scoped in `src/components/catalogue/catalogue.module.css`, using existing tokens, fonts, gradients and button treatments. Interactive code is limited to the new page header, image gallery and configuration selection. No cart, checkout or purchase handler exists. An available variant can lead to boutique contact; enquiries use the existing `/#contact` or `/#appointment` destination. Zero-photo records have an explicit photography-by-request state. This phase supports existing local image references; external media integration is deferred.
+
+Prices are formatted directly from integer minor-unit strings; variants retain their own price/availability. Development entries are visibly labelled and receive `noindex`, including if fixture data is deployed. Optional server-only `SITE_URL` must be a verified HTTPS origin to emit canonical URLs; without it, no live hostname is invented. No ratings, reviews, certificate documents or structured certification claims are added.
+
+Verification commands:
+
+```powershell
+npm.cmd run lint
+npx.cmd tsc --noEmit
+npm.cmd run build
+# Use the isolated local cluster setup above:
+$env:TEST_DATABASE_URL = 'postgresql://phase03_validator@127.0.0.1:55441/postgres'
+npm.cmd run test:db
+npm.cmd run test:storefront
+# Use an already available Playwright module and matching Chromium executable:
+$env:PLAYWRIGHT_MODULE = 'C:\path\to\playwright\index.mjs'
+$env:CHROMIUM_EXECUTABLE = 'C:\path\to\chrome.exe'
+npm.cmd run test:storefront:browser
+```
+
+The browser suite requires a current production build, uses local ports 3110–3112, starts/stops its own Next.js processes and creates/removes a uniquely named fixture database and restricted read role. The maintenance URL must point at an explicitly disposable loopback cluster with database/role creation permissions. The examples' role/port must match your own cluster initialization. No browser dependency was added; `PLAYWRIGHT_MODULE` can be omitted where `playwright` is already resolvable. Optional `HOMEPAGE_BASELINE_DIR` enables exact comparison against `homepage-before-desktop.png` and `homepage-before-mobile.png` captured with reduced motion at 1440×1000 and 390×844. Optional `STOREFRONT_SCREENSHOT_DIR` must be outside the repository; the caller inspects and removes these requested screenshots afterward.
+
+## Phase 04: editorial information pages
+
+`/bespoke`, `/gemstones`, `/maison`, `/services`, `/appointment` and `/contact` use the existing catalogue shell/header with scoped editorial styling. The bespoke page reuses `BespokeProcessCarousel` unchanged. The shared catalogue/editorial header now links Bespoke, Contact and the appointment button to these routes; its footer reaches all six editorial pages. The original homepage, `SiteHeader`, anchor links, carousel source, global CSS, fonts and images are unchanged.
+
+These are information pages, not database submission workflows. Existing request tables remain unused, and no migration, public write endpoint, notification or scheduling integration was added. The owner explicitly requested that contact availability remain unconfirmed. The existing homepage mailbox is retained internally with `emailConfirmed: false` in `src/lib/editorial/contact.ts`; new pages do not publish it as an active link. Contact and appointment pages show the transparent availability state, no forms and no confirmed dates. Only a separately confirmed address can produce a mailto link; link generation is tested, not email delivery.
+
+Brand history uses only the established Egyptian heritage and 1973 foundation copy. Services are presented as general care advice or questions requiring boutique confirmation, without availability, price or turnaround promises. Gemstone education and care reference [GIA's Gem Encyclopedia](https://www.gia.edu/gem-encyclopedia) and its [jewelry-care guide](https://www.gia.edu/gia-news-research-Tips-Caring-Jewelry). Illustrations do not authenticate individual stones. No universal laboratory certification or origin is asserted.
+
+Each page has its own title, description, headings and internal links. Canonicals use the existing metadata helper only when a valid HTTPS `SITE_URL` origin is known; for these static information pages, configure it before building. No organization schema, addresses, ratings or external social accounts were invented. Builds do not require database or integration credentials.
+
+Run `npm run test:editorial` for the contact-policy tests in addition to the existing database/storefront commands. `npm run test:storefront:browser` now also checks all six editorial routes, shared navigation, the reused carousel/FAQ, truthful contact/appointment states, metadata, imagery and desktop/tablet/mobile rendering. Use a disposable local PostgreSQL cluster and an existing Playwright/Chromium installation as documented above. No new dependencies were introduced.
+
+The Phase 04 homepage comparison preserves both starting references and compares decoded pixels when PNG bytes differ. It allows only colour-rounding differences of at most 8/255 per channel, affecting at most 2.5% of pixels, to accommodate Chromium's image/filter rasterization; dimensions must match. This replaces the Phase 03 byte-only comparison described above. The first Phase 04 run identified only mobile ring-image rounding (maximum 7/255; approximately 2% of pixels, depending on the decoder); desktop matched exactly. Protected source and assets are also checked against their starting SHA-256 hashes.
