@@ -15,7 +15,11 @@
     "test:editorial": "node --experimental-strip-types --conditions=react-server --test tests/editorial.test.mts",
     "admin:provision": "node --experimental-strip-types --conditions=react-server --env-file-if-exists=.env.local scripts/provision-admin.mts",
     "test:admin": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/admin.test.mts",
-    "test:admin:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/admin.browser.mts"
+    "test:admin:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/admin.browser.mts",
+    "test:catalogue-admin": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/catalogue-admin.test.mts",
+    "test:catalogue-admin:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/catalogue-admin.browser.mts",
+    "test:cart": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/cart.test.mts",
+    "test:cart:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/cart.browser.mts"
   },
   "dependencies": {
     "better-auth": "1.7.14",
@@ -23,7 +27,8 @@
     "pg": "8.23.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "server-only": "0.0.1"
+    "server-only": "0.0.1",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

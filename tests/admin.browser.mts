@@ -1,85 +1,12 @@
-// HTTPS loopback validation keeps production Secure cookies and strict origins.
-// Supply an existing Playwright/Chromium plus temporary test TLS files.
+// Shared HTTPS fixture preserves production Secure cookies and strict origins.
 import assert from "node:assert/strict";
-import { after, before, beforeEach, test } from "node:test";
-import { spawn, type ChildProcess } from "node:child_process";
-import { createServer as httpsServer, type Server } from "node:https";
-import { request as httpRequest } from "node:http";
-import { mkdir, readFile } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
-import { adminFixture } from "./helpers/admin-fixture.mts";
-
-const moduleName = process.env.PLAYWRIGHT_MODULE ? pathToFileURL(resolve(process.env.PLAYWRIGHT_MODULE)).href : "playwright";
-const { chromium } = await import(moduleName);
-let browser: Awaited<ReturnType<typeof chromium.launch>>;
-let fixture: Awaited<ReturnType<typeof adminFixture>>;
-let tls: Server;
-const servers: ChildProcess[] = [];
-const origin = "https://127.0.0.1:3443";
-type BrowserPage = Awaited<ReturnType<typeof browser.newPage>>;
-
-async function server(port: number, configured: boolean) {
-  const child = spawn(process.execPath, [resolve("node_modules/next/dist/bin/next"), "start", "--hostname", "127.0.0.1", "--port", String(port)], {
-    windowsHide: true, stdio: "ignore", env: { ...process.env, NODE_ENV: "production", DATABASE_URL: "",
-      ADMIN_DATABASE_URL: configured ? fixture.authConfig.databaseUrl : "", BETTER_AUTH_URL: configured ? origin : "",
-      BETTER_AUTH_SECRET: configured ? fixture.authConfig.secret : "", ADMIN_TRUSTED_IP_HEADER: "" },
-  });
-  servers.push(child);
-  for (let i = 0; i < 100; i++) {
-    if (child.exitCode !== null) throw new Error("Temporary admin server exited before readiness.");
-    try { if ((await fetch(`http://127.0.0.1:${port}/admin/login`)).ok) return; } catch { /* Startup only. */ }
-    await new Promise((done) => setTimeout(done, 100));
-  }
-  throw new Error("Temporary admin server did not become ready.");
-}
-
-before(async () => {
-  fixture = await adminFixture(origin);
-  if (!process.env.ADMIN_TEST_TLS_KEY || !process.env.ADMIN_TEST_TLS_CERT) throw new Error("Set temporary local TLS certificate paths; production cookie security is not disabled.");
-  await server(3120, true); await server(3121, false);
-  const [key, cert] = await Promise.all([readFile(process.env.ADMIN_TEST_TLS_KEY), readFile(process.env.ADMIN_TEST_TLS_CERT)]);
-  tls = httpsServer({ key, cert }, (incoming, outgoing) => {
-    const upstream = httpRequest({ host: "127.0.0.1", port: 3120, method: incoming.method, path: incoming.url,
-      headers: { ...incoming.headers, "x-forwarded-proto": "https", "x-forwarded-host": "127.0.0.1:3443", "x-forwarded-port": "3443" } }, (response) => {
-      outgoing.writeHead(response.statusCode ?? 502, response.headers); response.pipe(outgoing);
-    });
-    upstream.on("error", () => {
-      if (!outgoing.headersSent && !outgoing.destroyed) { outgoing.writeHead(502); outgoing.end("Temporary test server unavailable."); }
-      else outgoing.destroy();
-    });
-    outgoing.on("close", () => upstream.destroy());
-    incoming.pipe(upstream);
-  });
-  await new Promise<void>((done) => tls.listen(3443, "127.0.0.1", done));
-  browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_EXECUTABLE || undefined });
-  if (process.env.ADMIN_SCREENSHOT_DIR) {
-    const directory = resolve(process.env.ADMIN_SCREENSHOT_DIR);
-    assert.ok(!directory.startsWith(resolve(".") + sep), "Screenshots must stay outside the repository.");
-    await mkdir(directory, { recursive: true });
-  }
-}, { timeout: 60000 });
-beforeEach(async () => { if (fixture) await fixture.data.query("DELETE FROM admin_auth_rate_limits"); });
-after(async () => {
-  if (browser) await browser.close();
-  if (tls) await new Promise<void>((done, reject) => tls.close((error) => error ? reject(error) : done()));
-  for (const child of servers) if (child.exitCode === null) {
-    const stopped = new Promise<void>((done) => child.once("close", () => done())); child.kill(); await stopped;
-  }
-  if (fixture) await fixture.close();
-});
-
-async function screenshot(page: BrowserPage, name: string) {
-  if (process.env.ADMIN_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.ADMIN_SCREENSHOT_DIR, `${name}.png`) });
-}
-async function signIn(page: BrowserPage) {
-  await page.goto(origin + "/admin/login", { waitUntil: "networkidle" });
-  await page.getByLabel("Email address", { exact: true }).fill(fixture.users.OWNER.email);
-  await page.getByLabel("Password", { exact: true }).fill(fixture.password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.waitForURL(origin + "/admin");
-  assert.match(await page.locator("h1").innerText(), /Welcome, Fixture OWNER/);
-}
+import { beforeEach, test } from "node:test";
+import { adminBrowserHarness } from "./helpers/admin-browser.mts";
+const harness = adminBrowserHarness();
+const { origin, screenshot, signIn } = harness;
+let browser: ReturnType<typeof harness.current>["browser"];
+let fixture: ReturnType<typeof harness.current>["fixture"];
+beforeEach(() => { ({ browser, fixture } = harness.current()); });
 
 test("unauthenticated requests cannot reach the admin area or its RSC payload", async () => {
   const context = await browser.newContext({ ignoreHTTPSErrors: true });

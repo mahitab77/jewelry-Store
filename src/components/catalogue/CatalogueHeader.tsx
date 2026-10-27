@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 import styles from "./catalogue.module.css";
+import { CartBag } from "../cart/CartBag";
 
 const links = [{ label: "Home", href: "/" }, { label: "Collections", href: "/collections" },
   { label: "Bespoke", href: "/bespoke" }, { label: "Contact", href: "/contact" }];
@@ -35,7 +36,8 @@ export function CatalogueHeader() {
       <div className="hidden items-center gap-9 text-[0.82rem] uppercase tracking-[0.18em] text-[rgba(229,213,189,0.78)] lg:flex">
         {links.map((link) => <Link key={link.href} href={link.href} className="nav-link shrink-0 transition-colors duration-300 hover:text-gold">{link.label}</Link>)}
       </div>
-      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+      <div className="relative flex shrink-0 items-center gap-2 sm:gap-3">
+        <CartBag />
         <button type="button" className={`nav-menu-button lg:hidden ${styles.menuButton}`} aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}>
           <span className="sr-only">{open ? "Close menu" : "Open menu"}</span>
           <span aria-hidden="true" className={styles.menuBar} /><span aria-hidden="true" className={styles.menuBar} /><span aria-hidden="true" className={styles.menuBar} />

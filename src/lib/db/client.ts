@@ -3,23 +3,25 @@ import pg from "pg";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { databaseConfig, DatabaseError } from "./config.ts";
 
-const state = globalThis as typeof globalThis & { laPalmeDatabasePool?: Pool };
+type Access = "catalogue" | "cart";
+const state = globalThis as typeof globalThis & { laPalmeDatabasePool?: Pool; laPalmeCartPool?: Pool };
 
-function pool(): Pool {
-  if (!state.laPalmeDatabasePool) {
-    const instance = new pg.Pool(databaseConfig());
+function pool(access: Access): Pool {
+  const key = access === "cart" ? "laPalmeCartPool" : "laPalmeDatabasePool";
+  if (!state[key]) {
+    const instance = new pg.Pool(databaseConfig(access === "cart" ? process.env.CART_DATABASE_URL || "" : process.env.DATABASE_URL));
     // pg removes failed idle clients. Handle the event without logging SQL/secrets.
     instance.on("error", () => console.error("An idle database connection was closed."));
-    state.laPalmeDatabasePool = instance;
+    state[key] = instance;
   }
-  return state.laPalmeDatabasePool;
+  return state[key]!;
 }
 
-export async function withDatabaseClient<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withDatabaseClient<T>(operation: (client: PoolClient) => Promise<T>, access: Access = "catalogue"): Promise<T> {
   let client: PoolClient | undefined;
   let discard = false;
   try {
-    client = await pool().connect();
+    client = await pool(access).connect();
     return await operation(client);
   } catch (error) {
     discard = true;
@@ -34,8 +36,8 @@ export async function queryRows<T extends QueryResultRow>(sql: string, values: u
   return withDatabaseClient(async (client) => (await client.query<T>(sql, values)).rows);
 }
 
-// The borrowed client is the future transaction boundary; no checkout mutations here.
-export async function withTransaction<T>(operation: (client: PoolClient) => Promise<T>, readOnly = false): Promise<T> {
+// Cart writes use a separate restricted pool with the same transaction lifecycle.
+export async function withTransaction<T>(operation: (client: PoolClient) => Promise<T>, readOnly = false, access: Access = "catalogue"): Promise<T> {
   return withDatabaseClient(async (client) => {
     await client.query(readOnly ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" : "BEGIN");
     try {
@@ -46,12 +48,13 @@ export async function withTransaction<T>(operation: (client: PoolClient) => Prom
       await client.query("ROLLBACK");
       throw error;
     }
-  });
+  }, access);
 }
 
 // Call after outstanding work completes in Node scripts/tests, never per page query.
 export async function closeDatabase(): Promise<void> {
-  const instance = state.laPalmeDatabasePool;
+  const instances = [state.laPalmeDatabasePool, state.laPalmeCartPool];
   delete state.laPalmeDatabasePool;
-  if (instance) await instance.end();
+  delete state.laPalmeCartPool;
+  await Promise.all(instances.filter((instance): instance is Pool => Boolean(instance)).map((instance) => instance.end()));
 }

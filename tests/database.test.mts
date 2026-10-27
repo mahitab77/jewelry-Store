@@ -82,10 +82,10 @@ after(async () => {
 });
 
 test("fresh migrations apply and verified replay is a no-op", async () => {
-  assert.equal((await runMigrations(ownerUrl)).length, 7);
+  assert.equal((await runMigrations(ownerUrl)).length, 9);
   assert.deepEqual(await runMigrations(ownerUrl), []);
   const ledger = (await data.query("SELECT version, checksum_sha256 FROM schema_migrations ORDER BY version")).rows;
-  assert.equal(ledger.length, 7);
+  assert.equal(ledger.length, 9);
   assert.ok(ledger.every((row) => /^[a-f0-9]{64}$/.test(row.checksum_sha256)));
 });
 
@@ -107,7 +107,7 @@ test("changed, missing, reordered files and inconsistent ledger are rejected", a
     (await readFile(join(changed, "0006_migration_checksums.sql"), "utf8")).replace("SET LOCAL", "-- changed\nSET LOCAL"));
   await assert.rejects(runMigrations(ownerUrl, { directory: changed }), /checksum/);
   const missing = await migrationCopy("missing");
-  await rm(join(missing, "0007_admin_authentication.sql"));
+  await rm(join(missing, "0009_guest_cart.sql"));
   await assert.rejects(runMigrations(ownerUrl, { directory: missing }), /missing/);
   const reordered = await migrationCopy("reordered");
   await rename(join(reordered, "0002_customers_admin_carts.sql"), join(reordered, "0008_customers_admin_carts.sql"));
@@ -119,14 +119,14 @@ test("changed, missing, reordered files and inconsistent ledger are rejected", a
 
 test("failed migration DDL and ledger insertion both roll back", async () => {
   const directory = await migrationCopy("failed");
-  await writeFile(join(directory, "0008_failure_fixture.sql"), `BEGIN;
+  await writeFile(join(directory, "0010_failure_fixture.sql"), `BEGIN;
 CREATE TABLE public.phase02_rollback_fixture(id UUID PRIMARY KEY);
-INSERT INTO public.schema_migrations(version, filename) VALUES ('0008', '0008_failure_fixture.sql');
+INSERT INTO public.schema_migrations(version, filename) VALUES ('0010', '0010_failure_fixture.sql');
 SELECT public.phase02_nonexistent_function();
 COMMIT;\n`);
-  await assert.rejects(runMigrations(ownerUrl, { directory }), /0008 failed and was rolled back/);
+  await assert.rejects(runMigrations(ownerUrl, { directory }), /0010 failed and was rolled back/);
   assert.equal((await data.query("SELECT to_regclass('public.phase02_rollback_fixture') AS relation")).rows[0].relation, null);
-  assert.equal((await data.query("SELECT count(*) FROM schema_migrations")).rows[0].count, "7");
+  assert.equal((await data.query("SELECT count(*) FROM schema_migrations")).rows[0].count, "9");
 });
 
 test("original Phase 01 schema test passes; legacy adoption is explicit and additive", async () => {
@@ -139,7 +139,7 @@ test("original Phase 01 schema test passes; legacy adoption is explicit and addi
     const verification = (await readFile("db/tests/schema-verification.sql", "utf8")).replace(/^\\set[^\n]*\n/m, "");
     await legacy.query(verification);
     await assert.rejects(runMigrations(legacyUrl), /explicit --adopt-existing/);
-    assert.deepEqual(await runMigrations(legacyUrl, { adoptExisting: true }), ["0006_migration_checksums.sql", "0007_admin_authentication.sql"]);
+    assert.deepEqual(await runMigrations(legacyUrl, { adoptExisting: true }), ["0006_migration_checksums.sql", "0007_admin_authentication.sql", "0008_catalogue_media.sql", "0009_guest_cart.sql"]);
     assert.deepEqual(await runMigrations(legacyUrl), []);
   } finally { await legacy.end(); }
 });

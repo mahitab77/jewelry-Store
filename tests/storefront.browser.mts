@@ -116,13 +116,16 @@ test("homepage desktop/mobile preserves visual baseline and menu behavior withou
     await page.evaluate(() => document.fonts.ready);
     await page.waitForFunction(() => [...document.images].filter((i) => i.loading !== "lazy").every((i) => i.complete && i.naturalWidth > 0));
     const current = await page.screenshot();
+    const bagBounds = await page.locator("[data-cart-bag]").boundingBox();
+    assert.ok(bagBounds && bagBounds.width === 44 && bagBounds.height === 44);
+    assert.equal(await page.locator("[data-cart-bag]").count(), 1);
     if (process.env.HOMEPAGE_BASELINE_DIR) {
       const previous = await readFile(join(process.env.HOMEPAGE_BASELINE_DIR, `homepage-before-${name}.png`));
       if (!current.equals(previous)) {
         // Chromium image/filter rasterization can round a few colour values
         // differently across builds. Keep the original reference and compare
         // pixels: no geometry change or substantial colour change is allowed.
-        const difference = await page.evaluate(async ({ baseline, actual }: { baseline: string; actual: string }) => {
+        const difference = await page.evaluate(async ({ baseline, actual, bag }: { baseline: string; actual: string; bag: { x: number; y: number; width: number; height: number } }) => {
           async function pixels(encoded: string) {
             const image = new Image();
             image.src = `data:image/png;base64,${encoded}`;
@@ -140,13 +143,17 @@ test("homepage desktop/mobile preserves visual baseline and menu behavior withou
           let maxDelta = 0;
           let changed = 0;
           for (let i = 0; i < before.data.length; i += 4) {
+            // Phase 07 permits only this new bag control; retain the original
+            // tolerance everywhere else, including all existing header controls.
+            const x = i / 4 % before.width, y = Math.floor(i / 4 / before.width);
+            if (x >= Math.floor(bag.x) - 2 && x <= Math.ceil(bag.x + bag.width) + 2 && y >= Math.floor(bag.y) - 2 && y <= Math.ceil(bag.y + bag.height) + 2) continue;
             let delta = 0;
             for (let channel = 0; channel < 4; channel++) delta = Math.max(delta, Math.abs(before.data[i + channel] - after.data[i + channel]));
             maxDelta = Math.max(maxDelta, delta);
             if (delta) changed++;
           }
           return { maxDelta, changedFraction: changed / (before.width * before.height) };
-        }, { baseline: previous.toString("base64"), actual: current.toString("base64") });
+        }, { baseline: previous.toString("base64"), actual: current.toString("base64"), bag: bagBounds });
         assert.ok(difference.maxDelta <= 8 && difference.changedFraction <= .025,
           `Homepage ${name} differs from the approved starting source: ${JSON.stringify(difference)}`);
       }
@@ -262,7 +269,9 @@ test("desktop/tablet/mobile have no runtime errors, broken images, overflow or d
       assert.equal(await page.locator("nextjs-portal").count(), 0);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name}: ${path}`);
       assert.equal(await page.evaluate(() => [...document.images].some((i) => i.complete && i.naturalWidth === 0)), false);
-      assert.equal(await page.locator('a[href="/cart"],a[href="/checkout"],button:has-text("Add to Cart")').count(), 0);
+      // Phase 07 adds one shared bag affordance; checkout remains unavailable.
+      assert.equal(await page.locator('a[href="/cart"][data-cart-bag]').count(), 1);
+      assert.equal(await page.locator('a[href="/checkout"]').count(), 0);
       await screenshot(page, `${label}-${name}`);
       if (label === "collections") {
         await page.locator("article").first().scrollIntoViewIfNeeded();

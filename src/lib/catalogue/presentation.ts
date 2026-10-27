@@ -34,9 +34,10 @@ export function productTypeLabel(type: ProductType): string {
   return { ONE_OF_A_KIND: "One of a kind", REPEATABLE: "Signature piece", BESPOKE: "Bespoke commission" }[type];
 }
 
-// This phase serves existing local photography only; external media support is deferred.
+// Approved local images or publication-gated Cloudinary image identifiers only.
 export function publicImageSource(media: PublicMedia | null): string | null {
-  return media?.type === "IMAGE" && /^\/images\/[A-Za-z0-9_-]+\.(png|webp|jpe?g|avif)$/i.test(media.reference) ? media.reference : null;
+  return media?.type === "IMAGE" && (/^\/images\/[A-Za-z0-9_-]+\.(png|webp|jpe?g|avif)$/i.test(media.reference) ||
+    /^\/catalogue-images\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(media.reference)) ? media.reference : null;
 }
 
 export function isDevelopmentEntry(entry: { id: string; name: string; slug: string }): boolean {

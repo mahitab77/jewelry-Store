@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { ProductPhoto as Image } from "./ProductPhoto";
 import { useState } from "react";
 import type { PublicMedia } from "../../lib/catalogue/types.ts";
 import { publicImageSource } from "../../lib/catalogue/presentation.ts";

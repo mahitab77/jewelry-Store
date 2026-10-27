@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { PublicProductDetail } from "../../lib/catalogue/types.ts";
 import { formatEgp } from "../../lib/catalogue/presentation.ts";
 import styles from "./catalogue.module.css";
+import { AddToCart } from "../cart/AddToCart";
 
 type Props = Pick<PublicProductDetail, "variants" | "productType" | "salesMode" | "canEnquire">;
 export function JewelryOptions({ variants, productType, salesMode, canEnquire }: Props) {
@@ -24,9 +25,10 @@ export function JewelryOptions({ variants, productType, salesMode, canEnquire }:
     </fieldset> : null}
     <p className={styles.stock} aria-live="polite">{availability}</p>
     <p className={styles.supporting}>{selected?.canPurchase
-      ? "Please contact the boutique for current availability and personal purchase arrangements."
+      ? "Add your chosen configuration to the shopping bag. Your bag does not reserve the piece."
       : enquiryOnly ? "A private conversation is the first step. Speak with us about the piece, its details, and your preferences."
         : "Our boutique can share further details. Availability is confirmed personally."}</p>
+    {selected?.canPurchase && !enquiryOnly ? <AddToCart key={selected.id} variantId={selected.id} /> : null}
     {canEnquire || selected?.canPurchase ? <Link href={productType === "BESPOKE" ? "/#appointment" : "/#contact"}
       className={`hero-cta hero-primary-button ${styles.button}`}>
       {productType === "BESPOKE" ? "Discuss a bespoke piece" : canEnquire ? "Enquire with the boutique" : "Contact the boutique"}

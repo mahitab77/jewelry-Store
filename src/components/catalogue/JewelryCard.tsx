@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { ProductPhoto as Image } from "./ProductPhoto";
 import Link from "next/link";
 import type { PublicProduct } from "../../lib/catalogue/types.ts";
 import { formatEgp, productTypeLabel, publicImageSource } from "../../lib/catalogue/presentation.ts";

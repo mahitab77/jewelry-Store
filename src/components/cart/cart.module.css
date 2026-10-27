@@ -1,0 +1,38 @@
+.bag { position: absolute; right: calc(100% + .5rem); display: inline-flex; width: 44px; height: 44px; align-items: center; justify-content: center; color: var(--ivory); border-radius: 5px; }
+.bag:hover { color: var(--gold); background: rgba(255,250,240,.05); }
+.bag:focus-visible, .root :is(a,button,input):focus-visible { outline: 1px solid var(--gold); outline-offset: 3px; }
+.badge { position: absolute; top: 1px; right: 0; min-width: 17px; padding: 1px 3px; border-radius: 12px; background: var(--gold); color: #090807; font-size: 9px; line-height: 14px; text-align: center; font-weight: 700; }
+.root { padding-block: clamp(3rem,7vw,6rem); }
+.eyebrow { text-transform: uppercase; letter-spacing: .24em; color: var(--gold); font-size: .68rem; margin-bottom: 1rem; }
+.root h1 { font-size: clamp(2.8rem,6vw,4.5rem); color: var(--ivory); line-height: 1.1; }
+.intro { color: var(--beige); font-size: .9rem; line-height: 1.8; max-width: 620px; margin-block: 1.5rem 2.5rem; }
+.layout { display: grid; grid-template-columns: minmax(0,1.7fr) minmax(280px,1fr); gap: clamp(1.5rem,4vw,4rem); align-items: start; }
+.item { display: grid; grid-template-columns: 140px minmax(0,1fr); gap: 1.5rem; border-top: 1px solid var(--border); padding-block: 1.5rem; }
+.photo { position: relative; height: 155px; background: rgba(217,189,122,.04); display: flex; align-items: center; justify-content: center; color: var(--beige); font-size: .75rem; }
+.image { object-fit: contain; padding: .7rem; }
+.item h2 { font-size: clamp(1.6rem,3vw,2rem); color: var(--ivory); line-height: 1.15; overflow-wrap: anywhere; }
+.item h2 a { text-decoration: none; }
+.detail, .notice, .priceNotice { color: var(--beige); font-size: .82rem; line-height: 1.8; margin-block: .65rem; overflow-wrap: anywhere; }
+.price { color: var(--ivory); font-size: .88rem; margin-block: .8rem; }
+.notice, .priceNotice { border-left: 1px solid var(--gold); padding-left: .8rem; }
+.controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin-top: 1rem; }
+.quantity { display: inline-flex; border: 1px solid var(--border); align-items: center; }
+.quantity button, .quantity input { width: 44px; height: 44px; background: transparent; color: var(--ivory); border: 0; text-align: center; font: inherit; }
+.quantity input { width: 56px; border-inline: 1px solid var(--border); appearance: textfield; }
+.quantity input::-webkit-inner-spin-button { appearance: none; }
+.quantity button { cursor: pointer; }
+.root button:disabled { opacity: .45; cursor: not-allowed; }
+.remove { min-height: 44px; padding-inline: .5rem; background: transparent; border: 0; color: var(--beige); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; font-size: .8rem; }
+.summary { border: 1px solid var(--border); padding: clamp(1.3rem,3vw,2rem); }
+.summary h2, .empty h2 { font-size: 2.1rem; color: var(--ivory); }
+.subtotal { display: flex; justify-content: space-between; gap: 1rem; border-block: 1px solid var(--border); padding-block: 1.2rem; margin-block: 1.5rem; flex-wrap: wrap; color: var(--ivory); }
+.subtotal strong { overflow-wrap: anywhere; }
+.button { display: inline-flex; min-height: 46px; padding: .8rem 1.3rem; justify-content: center; align-items: center; text-transform: uppercase; letter-spacing: .14em; font-size: .68rem; font-weight: 600; text-align: center; cursor: pointer; }
+.summary .button { width: 100%; margin-top: 1rem; }
+.feedback { margin-block: 1rem; font-size: .85rem; line-height: 1.7; color: var(--ivory); }
+.purchase { margin-block: 1.2rem; }
+.purchase .button { min-width: 200px; }
+.empty { border-block: 1px solid var(--border); text-align: center; padding: 3.5rem 1rem; }
+.empty p { margin: 1.5rem auto 2rem; color: var(--beige); line-height: 1.8; max-width: 480px; }
+@media(min-width:1024px) and (max-width:1279px) { .bag { position: relative; right: auto; } }
+@media(max-width:767px) { .layout { grid-template-columns: minmax(0,1fr); } .item { grid-template-columns: 88px minmax(0,1fr); gap: 1rem; } .photo { height: 112px; } .controls { gap: .5rem; } .quantity button { width: 40px; } .quantity input { width: 45px; } .purchase .button { width: 100%; } }

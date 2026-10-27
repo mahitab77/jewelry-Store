@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useId, useState } from "react";
+import { CartBag } from "./cart/CartBag";
 
 const navLinks = [
   { label: "Home", href: "#" },
@@ -77,7 +78,8 @@ export function SiteHeader() {
           ))}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        <div className="relative flex shrink-0 items-center gap-2 sm:gap-3">
+          <CartBag />
           <button
             type="button"
             className="nav-menu-button inline-flex h-11 w-11 flex-col items-center justify-center gap-[5px] rounded-md border border-[rgba(217,189,122,0.28)] bg-[rgba(255,250,240,0.06)] text-ivory transition hover:border-[rgba(217,189,122,0.45)] hover:bg-[rgba(255,250,240,0.1)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--gold)] lg:hidden"
