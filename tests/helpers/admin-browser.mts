@@ -10,22 +10,25 @@ import { adminFixture } from "./admin-fixture.mts";
 import { catalogueFixture } from "./catalogue-fixture.mts";
 import { cartFixture } from "./cart-fixture.mts";
 import { mockCloudinaryConfiguration } from "./cloudinary-mock.mts";
+import { paymentFixture } from "./payment-fixture.mts";
+import { paymentEnvironment } from "./paymob-mock.mts";
 
 const moduleName = process.env.PLAYWRIGHT_MODULE ? pathToFileURL(resolve(process.env.PLAYWRIGHT_MODULE)).href : "playwright";
 const { chromium } = await import(moduleName);
 
-export function adminBrowserHarness(catalogue = false, cart = false) {
+export function adminBrowserHarness(catalogue = false, cart = false, payments = false) {
   let browser: Awaited<ReturnType<typeof chromium.launch>>;
-  let fixture: Awaited<ReturnType<typeof adminFixture>> & Partial<Pick<Awaited<ReturnType<typeof cartFixture>>, "cartUrl" | "readerUrl">>;
+  let fixture: Awaited<ReturnType<typeof adminFixture>> & Partial<Pick<Awaited<ReturnType<typeof cartFixture>>, "cartUrl" | "readerUrl">> & Partial<Pick<Awaited<ReturnType<typeof paymentFixture>>, "paymentUrl">>;
   let tls: Server;
   const servers: ChildProcess[] = [];
   let serverOutput = "";
   const secrets: string[] = [];
   const origin = "https://127.0.0.1:3443";
   async function server(port: number, configured: boolean) {
-    const preload = catalogue && configured ? ["--experimental-strip-types", "--import", pathToFileURL(resolve("tests/helpers/cloudinary-mock.mts")).href] : [];
+    const preload = payments && configured ? ["--experimental-strip-types", "--import", pathToFileURL(resolve("tests/helpers/paymob-mock.mts")).href] : catalogue && configured ? ["--experimental-strip-types", "--import", pathToFileURL(resolve("tests/helpers/cloudinary-mock.mts")).href] : [];
     const child = spawn(process.execPath, [...preload, resolve("node_modules/next/dist/bin/next"), "start", "--hostname", "127.0.0.1", "--port", String(port)], {
-      windowsHide: true, stdio: cart ? "pipe" : "ignore", env: { ...process.env, NODE_ENV: "production", DATABASE_URL: cart && configured ? fixture.readerUrl! : catalogue && configured ? fixture.authConfig.databaseUrl : "",
+      windowsHide: true, stdio: cart ? "pipe" : "ignore", env: { ...process.env,...Object.fromEntries(Object.keys(paymentEnvironment).map(key=>[key,""])),...(payments&&configured?paymentEnvironment:{}),
+        PAYMENT_DATABASE_URL:payments&&configured?fixture.paymentUrl!:"",PAYMENTS_BROWSER_PRELOAD:payments&&configured?"1":"", NODE_ENV: "production", DATABASE_URL: cart && configured ? fixture.readerUrl! : catalogue && configured ? fixture.authConfig.databaseUrl : "",
         CART_DATABASE_URL: cart && configured ? fixture.cartUrl! : "", CART_ORIGIN: cart && configured ? origin : "",
         CHECKOUT_DRAFT_RETENTION_READY: cart && configured ? "true" : "",
         ADMIN_DATABASE_URL: configured && !cart ? fixture.authConfig.databaseUrl : "", BETTER_AUTH_URL: configured && !cart ? origin : "",
@@ -45,7 +48,8 @@ export function adminBrowserHarness(catalogue = false, cart = false) {
     throw new Error("Temporary admin server did not become ready.");
   }
   before(async () => {
-    fixture = cart ? await cartFixture(origin) : catalogue ? await catalogueFixture(origin) : await adminFixture(origin);
+    fixture = payments ? await paymentFixture(origin) : cart ? await cartFixture(origin) : catalogue ? await catalogueFixture(origin) : await adminFixture(origin);
+    if(payments)for(const[key,value]of Object.entries(paymentEnvironment))if(/KEY|SECRET/.test(key))secrets.push(value);
     if (!process.env.ADMIN_TEST_TLS_KEY || !process.env.ADMIN_TEST_TLS_CERT) throw new Error("Set disposable local TLS paths; production cookie security is never disabled.");
     await server(3120, true); await server(3121, false);
     const [key, cert] = await Promise.all([readFile(process.env.ADMIN_TEST_TLS_KEY), readFile(process.env.ADMIN_TEST_TLS_CERT)]);
@@ -74,7 +78,7 @@ export function adminBrowserHarness(catalogue = false, cart = false) {
     if (fixture) await fixture.close();
     if (cart) {
       assert.ok(serverOutput.length <= 65536, "Inspect unexpectedly large cart server output before claiming log privacy.");
-      for (const secret of [...secrets, fixture?.cartUrl, fixture?.readerUrl].filter(Boolean) as string[]) assert.ok(!serverOutput.includes(secret), "A cart credential appeared in temporary server output.");
+      for (const secret of [...secrets, fixture?.cartUrl, fixture?.readerUrl, fixture?.paymentUrl].filter(Boolean) as string[]) assert.ok(!serverOutput.includes(secret), "A guest credential or personal fixture field appeared in temporary server output.");
     }
   });
   return { origin, current: () => ({ browser, fixture }), trackSecret(value: string) { secrets.push(value); }, async signIn(page: Awaited<ReturnType<typeof browser.newPage>>) {

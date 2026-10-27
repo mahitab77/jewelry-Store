@@ -23,7 +23,7 @@ type SelectionRow = {
 };
 const rejected = (message: string, status = 409) => ({ error: { message, status } });
 
-async function consume(client: PoolClient, key: string, max: number) {
+export async function consume(client: PoolClient, key: string, max: number) {
   const hash = tokenHash("la-palme-guest-limit:" + key);
   const row = (await client.query(`INSERT INTO cart_rate_limits(key_hash,count,expires_at)
     VALUES($1,1,statement_timestamp()+INTERVAL '1 minute') ON CONFLICT(key_hash) DO UPDATE SET

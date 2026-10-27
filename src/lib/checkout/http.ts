@@ -4,6 +4,8 @@ import { readCartJson } from "../cart/http.ts";
 import { throttleCart } from "../cart/repository.ts";
 import { loadCheckout, prepareCheckout } from "./repository.ts";
 import { parseDetails } from "./validation.ts";
+import { paymentsAvailable } from "../payments/config.ts";
+import { pendingOrderLink } from "../payments/orders.ts";
 
 const json = (body: unknown, status = 200, clear = false) => Response.json(body, { status, headers: {
   "Cache-Control": "private, no-store, max-age=0", "Vary": "Cookie", "X-Content-Type-Options": "nosniff", ...(clear ? { "Set-Cookie": clearCartCookie() } : {}),
@@ -16,7 +18,7 @@ export async function checkoutHttp(request: Request, path: string[] = []): Promi
     if (request.method === "GET" && !path.length) {
       if (session.token) await throttleCart(true);
       const checkout = await loadCheckout(session.token);
-      return json({ checkout }, 200, session.present && !checkout.cart.revision);
+      return json({ checkout, paymentsAvailable: paymentsAvailable(), pendingOrderUrl: await pendingOrderLink(session.token) }, 200, session.present && !checkout.cart.revision);
     }
     const action = request.method === "POST" && path.length === 1 && path[0] === "draft" ? "save"
       : request.method === "POST" && path.length === 1 && path[0] === "review" ? "review"

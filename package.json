@@ -22,7 +22,10 @@
     "test:cart:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/cart.browser.mts",
     "test:checkout": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/checkout.test.mts",
     "test:checkout:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/checkout.browser.mts",
-    "checkout:purge": "node --experimental-strip-types --conditions=react-server --env-file-if-exists=.env.local scripts/purge-checkout.mts"
+    "checkout:purge": "node --experimental-strip-types --conditions=react-server --env-file-if-exists=.env.local scripts/purge-checkout.mts",
+    "payments:reconcile": "node --experimental-strip-types --conditions=react-server --env-file-if-exists=.env.local scripts/reconcile-payments.mts",
+    "test:payments": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/payments.test.mts",
+    "test:payments:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/payments.browser.mts"
   },
   "dependencies": {
     "better-auth": "1.7.14",

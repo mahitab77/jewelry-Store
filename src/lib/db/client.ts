@@ -3,13 +3,13 @@ import pg from "pg";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { databaseConfig, DatabaseError } from "./config.ts";
 
-type Access = "catalogue" | "cart";
-const state = globalThis as typeof globalThis & { laPalmeDatabasePool?: Pool; laPalmeCartPool?: Pool };
+type Access = "catalogue" | "cart" | "payment";
+const state = globalThis as typeof globalThis & { laPalmeDatabasePool?: Pool; laPalmeCartPool?: Pool; laPalmePaymentPool?: Pool };
 
 function pool(access: Access): Pool {
-  const key = access === "cart" ? "laPalmeCartPool" : "laPalmeDatabasePool";
+  const key = access === "payment" ? "laPalmePaymentPool" : access === "cart" ? "laPalmeCartPool" : "laPalmeDatabasePool";
   if (!state[key]) {
-    const instance = new pg.Pool(databaseConfig(access === "cart" ? process.env.CART_DATABASE_URL || "" : process.env.DATABASE_URL));
+    const instance = new pg.Pool(databaseConfig(access === "payment" ? process.env.PAYMENT_DATABASE_URL || "" : access === "cart" ? process.env.CART_DATABASE_URL || "" : process.env.DATABASE_URL));
     // pg removes failed idle clients. Handle the event without logging SQL/secrets.
     instance.on("error", () => console.error("An idle database connection was closed."));
     state[key] = instance;
@@ -53,8 +53,9 @@ export async function withTransaction<T>(operation: (client: PoolClient) => Prom
 
 // Call after outstanding work completes in Node scripts/tests, never per page query.
 export async function closeDatabase(): Promise<void> {
-  const instances = [state.laPalmeDatabasePool, state.laPalmeCartPool];
+  const instances = [state.laPalmeDatabasePool, state.laPalmeCartPool, state.laPalmePaymentPool];
   delete state.laPalmeDatabasePool;
   delete state.laPalmeCartPool;
+  delete state.laPalmePaymentPool;
   await Promise.all(instances.filter((instance): instance is Pool => Boolean(instance)).map((instance) => instance.end()));
 }

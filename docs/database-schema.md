@@ -427,3 +427,110 @@ A saved draft has a fixed maximum lifetime of 24 hours from its first save, capp
 `npm run test:checkout` covers validation, ownership, stale revisions/context, expiry and physical deletion, exact arithmetic, safe production defaults and unchanged financial/inventory records against disposable PostgreSQL. `npm run test:checkout:browser` covers desktop/mobile delivery, restore/review, collection changes, cart/price changes, isolation, expiry and keyboard/error focus. It reuses the existing browser harness, `PLAYWRIGHT_MODULE`, `CHROMIUM_EXECUTABLE` and temporary TLS configuration; screenshots must remain outside the repository and be removed after inspection. Run checkout/cart/admin/catalogue-admin browser suites sequentially because they share local ports. Existing service and public browser suites remain required. Homepage comparison now includes the entire header and bag, without the earlier Phase 07 bag mask, at the existing raster tolerance.
 
 This phase adds no dependency and stops at preparation. Live Neon/Cloudinary checks, Workers compatibility, production migration/grant/retention setup, actual boutique location configuration and payment/order initiation remain operator or later-phase work. No Paymob call, customer registration, inventory reservation, delivery appointment or purchase confirmation is implemented.
+
+## Phase 09: test-mode orders, Paymob and stock reservations
+
+This implementation is **test mode only**, disabled by default, and is not a production release. It uses the existing financial and inventory tables, guest cart and checkout store. Migration `0011_test_payment_lifecycle.sql` adds correlation, guest-access, immutable collection snapshots, initiation/maintenance metadata and verified-event fields. It preserves all earlier migrations/checksums, source-cart uniqueness, financial-history foreign keys and existing checked order/payment/reservation statuses. New transactions are explicitly `test_mode=true`; legacy financial records are excluded from this runtime. No dependency, hosted migration, deployment, account registration, courier, delivery scheduling or automatic refund is introduced.
+
+### Verified Paymob contract
+
+The official documentation was inspected on 2026-10-27: [API flow](https://developers.paymob.com/paymob-docs/integration-paths/apis), [Create Intention](https://developers.paymob.com/paymob-docs/intention-apis/create-intention), [Unified Checkout](https://developers.paymob.com/paymob-docs/developers/checkout-experiences/unified-checkout-redirection), [transaction callbacks](https://developers.paymob.com/paymob-docs/manage-callback/transaction-callbacks), [HMAC overview](https://developers.paymob.com/paymob-docs/developers/webhook-callbacks-and-hmac/hmac), [exact processed-callback HMAC](https://developers.paymob.com/paymob-docs/developers/webhook-callbacks-and-hmac/hmac/hmac-transaction-callback), [credentials](https://developers.paymob.com/paymob-docs/need-help/setup-guides/getting-integration-credentials), [API authentication](https://developers.paymob.com/paymob-docs/developers/authentication-request-generate-auth-token-1), and [inquiry by merchant reference](https://developers.paymob.com/paymob-docs/developers/transaction-inquiry-apis/transaction-inquiry/by-order-id-or-reference).
+
+The adapter posts to the fixed Egyptian endpoint `https://accept.paymob.com/v1/intention/` using `Authorization: Token <test-secret-key>`. It sends the authoritative EGP amount, one configured test integration, minimal required billing contact, a stable random attempt reference as `special_reference`, expiration, and fixed same-origin callback/return routes. Optional item/extras metadata is omitted: full line snapshots remain local, and no customer data is copied into custom metadata. The response must match the amount, currency, special reference and configured integration, contain test-prefixed intention/client-secret identifiers, and report `live=false`. Only whitelisted values are retained; raw provider responses/card fields are not stored.
+
+Current official Egypt Unified Checkout is `https://eg.checkout.paymob.com/?publicKey=...&clientSecret=...`; it is not inferred from older examples using the acceptance API host. The server constructs this fixed destination, and the browser checks the same host/path/parameters. API base/redirect hosts cannot be supplied by customers or environment overrides. Requests have a 12-second timeout, refuse redirects and bound response JSON to 64 KiB. The positive JSON number accepted by the provider must fit `Number.MAX_SAFE_INTEGER`; local order/cart arithmetic remains exact BIGINT/integer minor units, and larger amounts fail before any reservation or provider request. The existing database's zero discount/tax/fee defaults are used for this **test** order; no business fee policy or production pricing approval is implied.
+
+The processed callback uses exactly Paymob's documented twenty-field order, concatenated values and HMAC-SHA512, with a length-checked constant-time comparison. Its signed `order.id`, `integration_id`, `owner`, amount and currency bind it to the stored attempt. `merchant_order_id`, `is_live`, refund amounts and other unsigned fields are not independent authentication evidence. In particular, unsigned merchant metadata cannot attach an unknown callback to a local order. The supplementary `is_live=false` check is backed by test-only credentials, authenticated intention validation and signed integration/owner/reference matching. Unknown authenticated references are retained as minimal unmatched business events and receive a non-success response until processed. The official canonical-string example is a permanent test fixture; the published secret is redacted, so its displayed digest cannot be reproduced. Tests sign synthetic callbacks with a separate fixture-only secret. No real card data or merchant credentials are in fixtures.
+
+### Routes and customer access
+
+- `POST /api/payments/initiate`: exact-Origin, owned saved checkout, fingerprint and microsecond draft revision; no browser IDs or totals.
+- `POST /api/payments/paymob/callback?hmac=...`: authenticated processed transaction callback, bounded JSON, dedicated shared database rate counter; no browser session or Origin requirement.
+- `GET /api/payments/paymob/return/[reference]`: discards all query claims and redirects to the fixed same-origin order page. It never changes financial state.
+- `GET /api/orders/[reference]`: private, no-store, owner-checked status and minimal snapshotted selection/destination.
+- `POST /api/orders/[reference]/payment`: safely resume an undispatched/available existing attempt or retry a known failed attempt using its durable previous-attempt reference.
+- `/orders/[reference]`: dynamic shell, no personal data in HTML/RSC, no-index and no-referrer; reads authoritative private API data. A redirect alone always leaves payment pending.
+
+The existing HttpOnly/Secure/Lax guest cookie is the only customer credential. Order access additionally pins its hash and original expiry to the immutable order, requires a current active unexpired guest cart with that hash, and checks a random order UUID. A UUID/order number alone grants no access. Guest status access ends when the cookie/session expires or is revoked; there is no unsecured recovery lookup. Responses never include raw session tokens, service credentials, provider secret keys or card details. The provider's intention-specific client secret is sent only in its required hosted-checkout URL to the authenticated initiating customer. It stays in the restricted payment table only for the short resume window and is cleared on terminal handling/maintenance. Order pages and return responses suppress referrers; no analytics are added.
+
+`GET /api/checkout` additionally provides an owned pending-order link, including unresolved exceptions. This lets a guest recover after a lost initiation response, even when that order's hold makes its original cart selection unavailable. Unsaved/review-only details cannot initiate payment: the current validated form must match the saved draft and its reviewed context. The Phase 08 production retention gate remains mandatory. Payment availability exposes a boolean only; missing credentials do not cause unrelated homepage database operations or prevent builds.
+
+### Transactions, snapshots and stock ownership
+
+All payment work uses a separate lazy `PAYMENT_DATABASE_URL` pool, never the administrator, owner or public-reader pool. A guest-specific PostgreSQL transaction advisory lock coordinates this lifecycle across instances, followed by current-cart/order/payment locks. Selected products/variants/prices are share-locked, and inventory rows are update-locked in deterministic ID order. The server re-reads the authoritative cart and saved draft after locks, validates location activity/contact/price/quantity/stock, and checks `inventory.reserved` against active reservation sums. Inconsistent ledgers fail closed before charging.
+
+One short transaction creates the pending order, immutable names/SKU/configuration/quantity/prices/contact/destination snapshots, payment attempt and payment-owned inventory reservations. An insertion failure rolls everything back. Holding stock increases only the existing `reserved` counter; it never deducts `on_hand`. A durable `LOCAL_READY → DISPATCHING` claim commits before external HTTP. No Paymob request occurs under database row locks. There is exactly one create request per claimed attempt; `special_reference` is correlation, not an assumed provider idempotency guarantee. Repeated submissions return the existing order/attempt. An ambiguous timeout, malformed response, lost response or interrupted dispatch is never automatically retried as another intention.
+
+Reservations reference both their order and payment attempt, with composite ownership and uniqueness constraints. A verified standalone non-pending success consumes only that attempt's ACTIVE holds, decrements `on_hand` and `reserved` together once, and records `inventory_finalized_at`. Duplicate/out-of-order callbacks cannot repeat it. A verified failure or documented provider rejection releases only that attempt's holds, without deducting physical stock. Runtime grants make financial/contact/destination/item snapshots immutable.
+
+The original unique `orders.source_cart_id` constraint is retained. On terminal handling, the original cart becomes converted; a new ordinary cart inherits the same token hash, expiry and remaining selections, so the browser keeps the same cookie and existing cart store. Only purchased lines whose ID, quantity and full-precision update timestamp remain unchanged are removed. Added/edited selections and newer checkout details are preserved. Historical source carts/orders remain linked and cannot cascade-delete financial records. An existing unresolved payment or critical exception blocks another payment for that guest. Known failed retries create one uniquely linked child attempt, revalidate the original price/configuration/publication/stock and collection snapshot, and reserve afresh without altering order history.
+
+### State machine and late outcomes
+
+| Condition | Attempt/local state | Order/stock effect |
+| --- | --- | --- |
+| Committed, not sent | `CREATED / LOCAL_READY` | `PENDING_PAYMENT / PENDING`; active hold |
+| Request dispatched | `PENDING / DISPATCHING` | no second create request; short dispatch lease |
+| Verified intention | `PENDING / READY` | bounded local resume URL; awaiting result |
+| Unknown outcome/stale dispatch | `PENDING / UNCERTAIN` | reconciliation flag; stock remains held |
+| Verified standalone success with owned holds | `SUCCEEDED` | `CONFIRMED / PAID`; stock consumed once; fulfillment remains `UNARRANGED` |
+| Verified failure/definitive rejection | `FAILED` | `CANCELLED / FAILED`; hold released once; safe retry may be offered |
+| Operator-confirmed provider closure, unpaid | `CANCELLED` | no automatic financial refund; own hold released after checks |
+| Late success after release | `SUCCEEDED` plus `LATE_SUCCESS` flag | paid history preserved; no replacement stock consumed; no fulfillment confirmation |
+| Another success/unsupported financial action | durable verified event plus reconciliation flag | no second deduction; no automatic refund or restock |
+
+Authorization-only, capture/parent, refund and void cases are flagged for manual review instead of being guessed as ordinary successful standalone charges. Exact refund amounts are not trusted from unsigned callback fields; refund/partial-refund management is not implemented. Earlier success cannot be overwritten by a later failure. A paid late exception remains visible to the customer and operator, even if its order is cancelled. If another attempt already owns a hold, the late attempt cannot consume it. A subsequently verified duplicate-paid attempt releases only its own otherwise-blocked holds and retains the duplicate-charge exception; no jewelry is automatically allocated or fulfilled for that exception.
+
+### Expiry, reconciliation and operator commands
+
+A reservation has an explicit 15-minute timestamp; expiration is not a payment-failure signal and never makes its units automatically available. The locally bounded checkout-link window is also not proof of provider closure. An expired attempt still in `LOCAL_READY` can be safely released because no dispatch was claimed. A dispatched/uncertain attempt requires authenticated provider inquiry or documented operator confirmation before release. A still-held expired reservation may be consumed by a verified success because those units were never reallocated. Provider-not-found, network failure or `pending=true` cannot authorize release.
+
+The adapter obtains an inquiry token with `POST /api/auth/tokens` and the shared API key, then calls `POST /api/ecommerce/orders/transaction_inquiry` with the local merchant reference. It verifies returned reference, owner/integration, amount, currency and test mode before binding an unknown provider order or processing the result. Inquiry data is authenticated by the fixed provider HTTPS API, not falsely labelled HMAC-verified. These read-only checks do not create, cancel or refund payments. Paymob's inquiry returns the last transaction: it is not assumed to enumerate every possible transaction or prove an intention closed.
+
+Use the following from a trusted operator environment with the restricted payment role and test credentials. Never expose these commands as an unauthenticated web endpoint:
+
+```text
+npm run payments:reconcile -- list 25
+npm run payments:reconcile -- run 10
+npm run payments:reconcile -- inspect PAYMENT_UUID
+npm run payments:reconcile -- close-unpaid PAYMENT_UUID NON_PERSONAL_EVIDENCE_REFERENCE --confirm-provider-closed-unpaid
+```
+
+`list` includes pending/flagged attempts and unmatched authenticated callbacks, using private financial references/reasons and no contact/address/card data. `run` claims a bounded batch (default 10, maximum 50), uses database leases/`SKIP LOCKED`, performs provider HTTP outside transactions, and reports claimed/checked counts. **Checked does not mean resolved**: run `list` afterward and monitor remaining exceptions. Multiple workers may repeat a read-only inquiry after a lease expiry; durable events and state transitions remain idempotent. Use a smaller batch when required by a job runtime's time limit.
+
+`inspect` supports any explicit test attempt, including a closed attempt whose provider identity was unknown. For an unmatched late callback, use its provider reference in the merchant dashboard to identify the genuine local reference, then inspect that local attempt; unsigned callback metadata is never the binding authority. Correlated stored events are replayed safely. `close-unpaid` requires a non-personal evidence reference and an explicit trusted operator attestation that the merchant dashboard/provider investigation confirmed the intention is closed, there is no pending provider activity and no funds were received. It performs a fresh inquiry, refuses processing/success/review states and active dispatch/maintenance leases, preserves history and cannot cancel a verified paid attempt. A not-found response by itself never authorizes closure. This command does not cancel anything at Paymob; the operator must have already established closure there. Any contradictory late success is retained and flagged, not hidden.
+
+Before enabling initiation, schedule and monitor reconciliation at least every minute, choose a batch/frequency that clears the expected load, alert on failed jobs and expired/stale holds, and assign an operator to investigate unresolved cases promptly (escalate within an hour). A provider outage or unprovable closure must not be resolved by freeing possibly paid stock. Disable new initiation if monitoring or operator coverage fails; keep callback/inquiry configuration available until outstanding transactions are settled. There is no automatic cron provisioned here. Reliable future free-hosting execution, webhook reachability and exception coverage remain **production release blockers**; neither local timers nor the readiness flag prove a hosted scheduler is running. Financial-history/backup retention requires a separate business policy; the 24-hour personal-draft policy does not delete financial snapshots.
+
+### Configuration and database grants
+
+`.env.example` contains placeholders only. Both `PAYMENTS_TEST_ENABLED` and `PAYMENTS_RECONCILIATION_READY` default false. Initiation requires exact `PAYMOB_MODE=test`, validated test-prefixed secret/public keys, test integration ID, the signed callback's `obj.owner` account-user ID, HMAC secret, read-only-inquiry API key, dedicated payment database URL, valid `CART_ORIGIN` and the Phase 08 retention acknowledgement. Live mode/live-prefixed credentials are rejected with no fallback. Verification/reconciliation remain available when only the initiation gate is disabled. Do not rotate the single configured HMAC/owner/integration identity while attempts remain unresolved without a separately reviewed migration/rotation plan.
+
+After applying 0011 through the established local/operator migration workflow, grant the illustrative runtime role below. Keep the public reader, guest cart and admin roles separate. Do not use an owner/migration credential at runtime:
+
+```sql
+GRANT USAGE ON SCHEMA public TO payment_runtime;
+GRANT SELECT ON products,product_variants,product_prices,product_media,inventory,boutique_locations,carts,cart_items,checkout_drafts,
+  orders,order_items,order_addresses,payments,payment_events,inventory_reservations,order_status_history TO payment_runtime;
+GRANT UPDATE(updated_at) ON products,product_variants,product_prices,boutique_locations TO payment_runtime;
+GRANT INSERT ON carts,orders,order_items,order_addresses,payments,payment_events,inventory_reservations,order_status_history TO payment_runtime;
+GRANT UPDATE(status,session_token_hash,updated_at) ON carts TO payment_runtime;
+GRANT UPDATE(cart_id) ON cart_items TO payment_runtime;
+GRANT DELETE ON cart_items,checkout_drafts TO payment_runtime;
+GRANT UPDATE(cart_id,updated_at) ON checkout_drafts TO payment_runtime;
+GRANT UPDATE(on_hand,reserved,updated_at) ON inventory TO payment_runtime;
+GRANT UPDATE(order_status,payment_status,inventory_finalized_at,reconciliation_required,reconciliation_reason,updated_at) ON orders TO payment_runtime;
+GRANT UPDATE(provider_order_reference,provider_intention_reference,provider_transaction_reference,status,succeeded_at,initiation_state,
+  checkout_client_secret,checkout_resume_until,next_reconcile_at,reconcile_lease_until,reconcile_attempts,last_error_code,updated_at) ON payments TO payment_runtime;
+GRANT UPDATE(status,ended_at,updated_at) ON inventory_reservations TO payment_runtime;
+GRANT UPDATE(payment_id,status,processing_attempts,last_error_code,processed_at) ON payment_events TO payment_runtime;
+GRANT SELECT,INSERT,UPDATE,DELETE ON cart_rate_limits TO payment_runtime;
+```
+
+Timestamp-only catalogue/location UPDATE grants satisfy PostgreSQL's `FOR SHARE` row-lock privilege check; the runtime never changes their price, publication, SKU or address fields. Financial/item/address/contact amounts are not updateable and financial/history deletes are not granted. These are server-service grants, not a substitute for per-guest authorization or a client SQL/RLS interface. Use verified database TLS on hosted connections. Existing admin stock adjustments preserve reserved units and cannot reduce physical stock below them.
+
+### Verification boundary
+
+Run `test:payments` and `test:payments:browser` alongside every existing service/browser suite, lint, TypeScript and a build with database/media/payment settings empty. Payment tests cover real disposable PostgreSQL locking/constraints/rollbacks, HMAC ordering/tampering, cross-session access, exact arithmetic, retries, uncertain outcomes, lease recovery, late success, immutable grants, retention/test gates, operator output and absence of stored card/contact callback fields. Browser tests use the existing HTTPS harness and a test-only preload; official hosted redirects are intercepted by a clearly labelled mock page, and authenticated synthetic callbacks exercise the real handler. No real sandbox transaction, card entry, merchant account or provider settlement is claimed. Screenshot/log/TLS/database artifacts are temporary and must be inspected/removed. Run payment, checkout, cart, admin and catalogue-admin browser suites sequentially because they share ports. No browser package is added.
+
+Actual merchant sandbox credentials, integration/owner configuration, provider response/expiry behavior, publicly reachable callbacks, refunds/authorization exceptions, key rotation, fee-policy approval and future Workers/scheduler compatibility still require operator verification. Do not enable live payments or declare production readiness. This phase stops before full order/fulfillment management in Phase 10.

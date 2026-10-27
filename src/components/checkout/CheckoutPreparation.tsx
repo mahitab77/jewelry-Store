@@ -7,6 +7,7 @@ import { formatEgp } from "../../lib/catalogue/presentation.ts";
 import { ProductPhoto } from "../catalogue/ProductPhoto";
 import bag from "../cart/cart.module.css";
 import styles from "./checkout.module.css";
+import { PaymentAction } from "./PaymentAction";
 
 const signature = (details: CheckoutDetails) => JSON.stringify(details);
 const money = (amount: string | null) => amount === null ? "Unavailable" : formatEgp({ currency: "EGP", amountMinor: amount });
@@ -16,6 +17,9 @@ function Field({ label, name, value, change, errors, type = "text", autoComplete
 }
 export function CheckoutPreparation() {
   const [view, setView] = useState<CheckoutView | null>(null), [details, setDetails] = useState(emptyDetails);
+  const [paymentsEnabled,setPaymentsEnabled]=useState(false);
+  const [savedSignature,setSavedSignature]=useState(()=>signature(emptyDetails()));
+  const [pendingOrderUrl,setPendingOrderUrl]=useState<string|null>(null);
   const [loading, setLoading] = useState(true), [pending, setPending] = useState(false), [loadError, setLoadError] = useState("");
   const [feedback, setFeedback] = useState(""), [errors, setErrors] = useState<CheckoutErrors>({});
   const [proof, setProof] = useState<{ fingerprint: string; details: string } | null>(null), [conflict, setConflict] = useState(false);
@@ -31,10 +35,12 @@ export function CheckoutPreparation() {
       if (local.revision !== (next.draft?.revision ?? null)) setConflict(true);
     } else if (!next.cart.revision || expired) {
       local.details = emptyDetails(); local.baseline = signature(local.details); local.revision = null; local.expiresAt = null;
+      setSavedSignature(local.baseline);
       setDetails(local.details); setProof(null); setConflict(false);
       if (expired) setFeedback("Your saved checkout details expired or were cleared. They have been removed from this page.");
     } else if (replace || !local.initialized || signature(local.details) === local.baseline) {
       local.details = next.details; local.baseline = signature(next.details); local.revision = next.draft?.revision ?? null; local.expiresAt = next.draft?.expiresAt ?? null;
+      setSavedSignature(local.baseline);
       setDetails(next.details); setConflict(false);
       setProof(next.state === "REVIEW_READY" ? { fingerprint: next.fingerprint, details: signature(next.details) } : null);
     } else if (local.revision !== (next.draft?.revision ?? null)) setConflict(true);
@@ -48,7 +54,7 @@ export function CheckoutPreparation() {
     try {
       const response = await fetch("/api/checkout", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(15000) });
       const result = await response.json(); if (!response.ok || !result.checkout) throw new Error();
-      if (active.current && version === sequence.current) { apply(result.checkout, replace); setLoadError(""); }
+      if (active.current && version === sequence.current) { apply(result.checkout, replace); setPaymentsEnabled(result.paymentsAvailable===true); setPendingOrderUrl(typeof result.pendingOrderUrl==='string' && /^\/orders\/[0-9a-f-]{36}$/.test(result.pendingOrderUrl)?result.pendingOrderUrl:null); setLoadError(""); }
     } catch { if (active.current && version === sequence.current) { setLoadError("Checkout details could not be refreshed. Refresh before continuing."); setProof(null); } }
     finally { if (active.current && version === sequence.current) setLoading(false); }
   }, [apply]);
@@ -86,10 +92,11 @@ export function CheckoutPreparation() {
   const field = (name: keyof CheckoutDetails, label: string, maxLength: number, type = "text", autoComplete?: string) => <Field name={name} label={label} value={details[name]} errors={errors} change={(value) => change(name, value)} maxLength={maxLength} type={type} autoComplete={autoComplete} />;
   return <section className={`maison-container ${bag.root} ${styles.root}`}>
     <p className={bag.eyebrow}>A personal arrangement</p><h1 className="font-display">Prepare your checkout</h1>
-    <p className={bag.intro}>Review your selection and tell us how you would like to receive it. This prepares your details; it does not place an order, take payment or reserve jewelry.</p>
+    <p className={bag.intro}>Review your selection and tell us how you would like to receive it. Reviewing or saving these details does not place an order, take payment or reserve jewelry.</p>
     <ol className={styles.steps} aria-label="Checkout preparation">{Object.entries(steps).map(([key, label], index) => <li key={key} aria-current={state === key ? "step" : undefined}>{index + 1}. {label}</li>)}</ol>
     <div ref={alert} tabIndex={-1} role="alert" hidden={!feedback && !loadError} className={bag.feedback}>{loadError || feedback}{Object.keys(errors).length ? <ul>{Object.entries(errors).map(([key, message]) => <li key={key}>{message}</li>)}</ul> : null}</div>
     {loadError ? <button type="button" className={`hero-cta hero-secondary-button ${bag.button}`} disabled={pending} onClick={() => void refresh()}>Refresh checkout</button> : null}
+    {pendingOrderUrl?<p className={bag.notice}>A payment or stock check is pending. <Link href={pendingOrderUrl} prefetch={false}>Check your pending order</Link> before starting another payment.</p>:null}
     {conflict ? <p className={bag.notice}>Saved details changed in another tab. Restore the current draft before saving again.</p> : null}
     {view?.changed && !ready ? <p className={bag.notice}>Your bag or collection options changed since the draft was saved. Review the current details again.</p> : null}
     {view?.draft ? <div className={bag.notice}><p>Saved until {new Date(view.draft.expiresAt).toLocaleString("en-GB")}. Saving again does not extend this expiry.</p>
@@ -116,8 +123,8 @@ export function CheckoutPreparation() {
           <div className={styles.actions}><button type="button" disabled={disabled || !view.cart.eligible || conflict || !view.savingAvailable} className={`hero-cta hero-secondary-button ${bag.button}`} onClick={() => void submit("draft")}>{pending ? "Updating details…" : "Save draft"}</button><button type="submit" disabled={disabled || !view.cart.eligible} className={`hero-cta hero-primary-button ${bag.button}`}>Review details</button></div>
         </form>
         {ready ? <section className={styles.review} aria-label="Review-ready checkout"><h2 className="font-display">Ready for review</h2><p>{details.fullName}</p><p>{details.email} · {details.phone}</p><p>{details.method === "PRIVATE_DELIVERY" ? "Private Delivery" : "Boutique Collection"}</p>
-          {details.method === "PRIVATE_DELIVERY" ? <address>{details.street}, {details.building} {details.floorUnit}, {details.city}, {details.governorate}, Egypt{details.instructions ? <p>{details.instructions}</p> : null}</address> : location ? <address>{location.name}: {location.street}, {location.city}, {location.governorate}, Egypt</address> : null}
-          <p>Online payment is not available yet. No order has been placed, and your jewelry is not reserved.</p></section> : null}
+          {details.method === "PRIVATE_DELIVERY" ? <address>{[details.street,details.building,details.floorUnit,details.city,details.governorate,"Egypt"].filter(Boolean).join(", ")}{details.instructions ? <p>{details.instructions}</p> : null}</address> : location ? <address>{location.name}: {location.street}, {location.city}, {location.governorate}, Egypt</address> : null}
+          <PaymentAction available={paymentsEnabled} pendingOrder={Boolean(pendingOrderUrl)} saved={Boolean(view.draft && view.draft.reviewFingerprint===view.fingerprint && signature(details)===savedSignature && !conflict)} fingerprint={view.fingerprint} revision={view.draft?.revision??null} amount={money(view.cart.subtotalMinor)}/></section> : null}
         <Link href="/cart" className={`hero-cta hero-secondary-button ${bag.button}`}>Return to your bag</Link>
       </div>
       <aside className={bag.summary} aria-label="Checkout selection"><h2 className="font-display">Your selection</h2>{view.cart.items.map((item) => <article key={item.id} className={styles.line}>

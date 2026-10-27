@@ -21,11 +21,11 @@ export async function purgeCheckoutDrafts(limit = 100): Promise<number> {
     WHERE d.expires_at<=clock_timestamp() OR c.expires_at<=clock_timestamp() OR c.status<>'ACTIVE' OR c.customer_profile_id IS NOT NULL
     ORDER BY d.expires_at,d.id LIMIT $1 FOR UPDATE OF d SKIP LOCKED)`, [limit])).rowCount ?? 0, "cart");
 }
-async function locations(client: PoolClient): Promise<BoutiqueLocation[]> {
+export async function locations(client: PoolClient): Promise<BoutiqueLocation[]> {
   return (await client.query<BoutiqueLocation>(`SELECT id,name,governorate,city_area AS city,street_address AS street
     FROM boutique_locations WHERE is_active AND country_code='EG' ORDER BY name,id LIMIT 100`)).rows;
 }
-async function draft(client: PoolClient, cartId: string): Promise<Draft | null> {
+export async function draft(client: PoolClient, cartId: string): Promise<Draft | null> {
   const row = (await client.query(`SELECT full_name AS "fullName",email,phone,COALESCE(fulfillment_method,'') AS method,
     country_code AS "countryCode",governorate,city_area AS city,street_address AS street,building,floor_unit AS "floorUnit",instructions,
     COALESCE(boutique_location_id::TEXT,'') AS "locationId",context_fingerprint AS fingerprint,${revisionSql} AS revision,expires_at
@@ -38,7 +38,7 @@ function view(owned: Owned, stored: Draft | null, available: BoutiqueLocation[])
   const fingerprint = checkoutFingerprint(owned.cart, available), details = stored?.details ?? emptyDetails();
   const errors = validateDetails(details, available), changed = Boolean(stored && stored.fingerprint !== fingerprint);
   return { cart: owned.cart, details, fingerprint, locations: available,
-    draft: stored ? { revision: stored.revision, expiresAt: stored.expiresAt } : null,
+    draft: stored ? { revision: stored.revision, expiresAt: stored.expiresAt, reviewFingerprint: stored.fingerprint } : null,
     state: checkoutStep(owned.cart.eligible, errors, changed), changed, savingAvailable: draftSavingEnabled() };
 }
 export async function loadCheckout(token: string | null): Promise<CheckoutView> {

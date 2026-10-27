@@ -15,6 +15,7 @@
 .methods label:has(input:disabled) { opacity: .5; }
 .actions { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin-block: 1rem; }
 .line { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 1rem; padding-block: 1rem; border-bottom: 1px solid var(--border); }
+.orderLine { display: block; }
 .photo { position: relative; height: 80px; background: rgba(217,189,122,.04); }
 .image { object-fit: contain; padding: .3rem; }
 .line h3 { color: var(--ivory); font-size: 1.1rem; overflow-wrap: anywhere; }

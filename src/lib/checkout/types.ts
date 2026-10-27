@@ -8,7 +8,7 @@ export interface CheckoutDetails {
 export interface BoutiqueLocation { id: string; name: string; governorate: string; city: string; street: string }
 export interface CheckoutView {
   cart: Cart; fingerprint: string; details: CheckoutDetails; locations: BoutiqueLocation[];
-  draft: { revision: string; expiresAt: string } | null; state: CheckoutStep; changed: boolean;
+  draft: { revision: string; expiresAt: string; reviewFingerprint: string } | null; state: CheckoutStep; changed: boolean;
   savingAvailable: boolean;
 }
 export type CheckoutErrors = Partial<Record<keyof CheckoutDetails | "cart", string>>;
