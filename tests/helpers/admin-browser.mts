@@ -27,6 +27,7 @@ export function adminBrowserHarness(catalogue = false, cart = false) {
     const child = spawn(process.execPath, [...preload, resolve("node_modules/next/dist/bin/next"), "start", "--hostname", "127.0.0.1", "--port", String(port)], {
       windowsHide: true, stdio: cart ? "pipe" : "ignore", env: { ...process.env, NODE_ENV: "production", DATABASE_URL: cart && configured ? fixture.readerUrl! : catalogue && configured ? fixture.authConfig.databaseUrl : "",
         CART_DATABASE_URL: cart && configured ? fixture.cartUrl! : "", CART_ORIGIN: cart && configured ? origin : "",
+        CHECKOUT_DRAFT_RETENTION_READY: cart && configured ? "true" : "",
         ADMIN_DATABASE_URL: configured && !cart ? fixture.authConfig.databaseUrl : "", BETTER_AUTH_URL: configured && !cart ? origin : "",
         BETTER_AUTH_SECRET: configured && !cart ? fixture.authConfig.secret : "", ADMIN_TRUSTED_IP_HEADER: "",
         CLOUDINARY_CLOUD_NAME: catalogue && configured ? mockCloudinaryConfiguration.cloudName : "",

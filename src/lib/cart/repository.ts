@@ -93,6 +93,12 @@ export async function readCart(token: string | null) {
     return { cart: await snapshot(client, row), clear: false };
   }, true, "cart");
 }
+// Checkout borrows the same transaction and authoritative snapshot; no second
+// catalogue, owner lookup or monetary calculation is introduced.
+export async function readOwnedCart(client: PoolClient, token: string, lock = false) {
+  const row = await findCart(client, tokenHash(token), lock);
+  return row?.active ? { id: row.id, cart: await snapshot(client, row) } : null;
+}
 type Mutation = { kind: "add"; variantId: string; quantity: number } | { kind: "update"; itemId: string; quantity: number; revision: string } | { kind: "remove"; itemId: string; revision: string };
 export async function mutateCart(token: string | null, mutation: Mutation) {
   const result = await withTransaction(async (client) => {

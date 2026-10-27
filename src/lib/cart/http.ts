@@ -6,12 +6,12 @@ const response = (body: unknown, status = 200, cookie?: string) => Response.json
   "Cache-Control": "private, no-store, max-age=0", "Vary": "Cookie", "X-Content-Type-Options": "nosniff",
   ...(cookie ? { "Set-Cookie": cookie } : {}),
 } });
-async function jsonBody(request: Request) {
+export async function readCartJson(request: Request, limit = 2048) {
   if (!/^application\/json(?:;\s*charset=utf-8)?$/i.test(request.headers.get("content-type") ?? "")) throw new CartError("Use a JSON shopping bag request.", 415);
   const reader = request.body?.getReader(); if (!reader) throw new CartError("A request body is required.");
   const parts: Uint8Array[] = []; let size = 0;
   try { while (true) { const part = await reader.read(); if (part.done) break; size += part.value.byteLength;
-    if (size > 2048) { await reader.cancel(); throw new CartError("This shopping bag request is too large.", 413); } parts.push(part.value); }
+    if (size > limit) { await reader.cancel(); throw new CartError("This request is too large.", 413); } parts.push(part.value); }
   } finally { reader.releaseLock(); }
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(parts))) as unknown; }
   catch { throw new CartError("Invalid JSON shopping bag request."); }
@@ -31,7 +31,7 @@ export async function cartHttp(request: Request, path: string[] = []): Promise<R
     if (!kind) return response({ message: "This shopping bag operation is not supported." }, 405);
     if (request.headers.get("origin") !== cartOrigin().origin) throw new CartError("This shopping bag request could not be verified.", 403);
     await throttleCart();
-    const body = object(await jsonBody(request), kind === "add" ? ["variantId", "quantity"] : kind === "update" ? ["quantity", "revision"] : ["revision"]);
+    const body = object(await readCartJson(request), kind === "add" ? ["variantId", "quantity"] : kind === "update" ? ["quantity", "revision"] : ["revision"]);
     const mutation: Parameters<typeof mutateCart>[1] = kind === "add" ? { kind, variantId: uuid(body.variantId), quantity: quantity(body.quantity) }
       : kind === "update" ? { kind, itemId: uuid(path[1]), quantity: quantity(body.quantity), revision: revision(body.revision) }
       : { kind, itemId: uuid(path[1]), revision: revision(body.revision) };

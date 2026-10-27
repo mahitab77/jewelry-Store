@@ -48,7 +48,7 @@ export function CartContents() {
           <div className={styles.subtotal}><span>Subtotal</span><strong data-cart-subtotal>{money(cart.subtotalMinor)}</strong></div>
           <p className={styles.detail}>An estimate at current EGP prices. The final total will be confirmed when checkout is available.</p>
           {!cart.eligible ? <p className={styles.notice}>Please review your selection before purchasing. Your choices remain in the bag until you remove them.</p> : null}
-          <p className={styles.detail}>Online checkout is not available yet.</p><button type="button" disabled className={`hero-cta hero-primary-button ${styles.button}`}>Checkout unavailable</button>
+          <p className={styles.detail}>Prepare your contact and fulfillment details. Online payment is not available yet.</p>{cart.eligible && !loading && !pending && !error ? <Link href="/checkout" prefetch={false} className={`hero-cta hero-primary-button ${styles.button}`}>Continue to checkout</Link> : <button type="button" disabled className={`hero-cta hero-primary-button ${styles.button}`}>Checkout unavailable</button>}
         </aside>
       </div> : <div className={styles.empty}><h2 className="font-display">Your bag is waiting</h2><p>Explore our jewelry and return here with the pieces you would like to keep in mind.</p><Link href="/collections" className={`hero-cta hero-primary-button ${styles.button}`}>Explore the collections</Link></div>}
     </>}

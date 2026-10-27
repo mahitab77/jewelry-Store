@@ -19,7 +19,10 @@
     "test:catalogue-admin": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/catalogue-admin.test.mts",
     "test:catalogue-admin:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/catalogue-admin.browser.mts",
     "test:cart": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/cart.test.mts",
-    "test:cart:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/cart.browser.mts"
+    "test:cart:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/cart.browser.mts",
+    "test:checkout": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/checkout.test.mts",
+    "test:checkout:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/checkout.browser.mts",
+    "checkout:purge": "node --experimental-strip-types --conditions=react-server --env-file-if-exists=.env.local scripts/purge-checkout.mts"
   },
   "dependencies": {
     "better-auth": "1.7.14",

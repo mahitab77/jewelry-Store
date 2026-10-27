@@ -118,7 +118,7 @@ test("mobile homepage bag, navigation, purchase control and cart quantities rema
     await count(page, 3); assert.match(await page.locator("[data-cart-subtotal]").innerText(), /7,350\.00/);
     await healthy(page); await page.evaluate(() => { window.scrollTo(0, 0); return document.fonts.ready; }); await screenshot(page, "cart-mobile");
     await page.reload({ waitUntil: "networkidle" }); await count(page, 3);
-    assert.equal(await page.getByRole("button", { name: "Checkout unavailable", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("link", { name: "Continue to checkout", exact: true }).getAttribute("href"), "/checkout");
     await operation(page, () => page.getByRole("button", { name: "Remove [DEVELOPMENT] repeatable-earrings", exact: true }).click(), "DELETE"); await count(page, 0);
     for (const width of [320, 1024, 1280]) for (const path of ["/", "/collections"]) {
       await page.setViewportSize({ width, height: 900 }); await page.goto(origin + path, { waitUntil: "networkidle" }); await healthy(page);

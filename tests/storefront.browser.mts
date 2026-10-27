@@ -125,7 +125,7 @@ test("homepage desktop/mobile preserves visual baseline and menu behavior withou
         // Chromium image/filter rasterization can round a few colour values
         // differently across builds. Keep the original reference and compare
         // pixels: no geometry change or substantial colour change is allowed.
-        const difference = await page.evaluate(async ({ baseline, actual, bag }: { baseline: string; actual: string; bag: { x: number; y: number; width: number; height: number } }) => {
+        const difference = await page.evaluate(async ({ baseline, actual }: { baseline: string; actual: string }) => {
           async function pixels(encoded: string) {
             const image = new Image();
             image.src = `data:image/png;base64,${encoded}`;
@@ -143,17 +143,13 @@ test("homepage desktop/mobile preserves visual baseline and menu behavior withou
           let maxDelta = 0;
           let changed = 0;
           for (let i = 0; i < before.data.length; i += 4) {
-            // Phase 07 permits only this new bag control; retain the original
-            // tolerance everywhere else, including all existing header controls.
-            const x = i / 4 % before.width, y = Math.floor(i / 4 / before.width);
-            if (x >= Math.floor(bag.x) - 2 && x <= Math.ceil(bag.x + bag.width) + 2 && y >= Math.floor(bag.y) - 2 && y <= Math.ceil(bag.y + bag.height) + 2) continue;
             let delta = 0;
             for (let channel = 0; channel < 4; channel++) delta = Math.max(delta, Math.abs(before.data[i + channel] - after.data[i + channel]));
             maxDelta = Math.max(maxDelta, delta);
             if (delta) changed++;
           }
           return { maxDelta, changedFraction: changed / (before.width * before.height) };
-        }, { baseline: previous.toString("base64"), actual: current.toString("base64"), bag: bagBounds });
+        }, { baseline: previous.toString("base64"), actual: current.toString("base64") });
         assert.ok(difference.maxDelta <= 8 && difference.changedFraction <= .025,
           `Homepage ${name} differs from the approved starting source: ${JSON.stringify(difference)}`);
       }
