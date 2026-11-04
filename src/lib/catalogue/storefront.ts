@@ -1,4 +1,5 @@
 import "server-only";
+import { siteOrigin } from "../site.ts";
 import { cache } from "react";
 import type { Metadata } from "next";
 import { DatabaseError } from "../db/config.ts";
@@ -53,14 +54,8 @@ export const loadJewel = cache(async (slug: string): Promise<CatalogueRead<Publi
 });
 
 export function catalogueMetadata(title: string, description: string, path: string, noindex: boolean): Metadata {
-  let canonical: string | undefined;
-  // A verified deployment origin must be configured; never invent a live domain.
-  try {
-    const origin = new URL(process.env.SITE_URL ?? "");
-    if (origin.protocol === "https:" && !origin.username && !origin.password && origin.pathname === "/" && !origin.search && !origin.hash) {
-      canonical = new URL(path, origin).toString();
-    }
-  } catch { /* Omit canonical until SITE_URL is configured. */ }
+  const origin = siteOrigin();
+  const canonical = origin ? new URL(path, origin).toString() : undefined;
   const pageTitle = `${title} | La Palme d’Or Gems`;
   return { title: pageTitle, description: description.slice(0, 160),
     keywords: ["La Palme d’Or Gems", "jewelry", "Egypt"],

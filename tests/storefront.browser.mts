@@ -30,7 +30,7 @@ type BrowserPage = Awaited<ReturnType<typeof browser.newPage>>;
 async function startServer(port: number, url?: string): Promise<void> {
   // An explicit empty value also blocks Next.js from loading a user's .env.local
   // connection for the missing-configuration test server.
-  const env: NodeJS.ProcessEnv = { ...process.env, DATABASE_URL: url ?? "", SITE_URL: "https://catalogue.example.invalid" };
+  const env: NodeJS.ProcessEnv = { ...process.env, DATABASE_URL: url ?? "", SITE_URL: "https://catalogue.boutique.test" };
   const server = spawn(process.execPath, [resolve("node_modules/next/dist/bin/next"), "start", "--hostname", "127.0.0.1", "--port", String(port)],
     { env, stdio: "ignore", windowsHide: true });
   servers.push(server);
@@ -209,9 +209,9 @@ test("jewel gallery, EGP prices, variants, bespoke and enquiry destinations work
   await page.getByRole("button", { name: "Previous photograph", exact: true }).focus();
   await page.keyboard.press("Enter");
   assert.equal(await page.getByRole("button", { name: "Show photograph 1" }).getAttribute("aria-pressed"), "true");
-  assert.equal(await page.getByRole("link", { name: "Enquire with the boutique" }).getAttribute("href"), "/#contact");
+  assert.equal(await page.getByRole("link", { name: "Enquire with the boutique" }).getAttribute("href"), "/contact");
   assert.match(await page.title(), /unique-ring/);
-  assert.equal(await page.locator('link[rel="canonical"]').getAttribute("href"), "https://catalogue.example.invalid/jewels/dev-unique-ring");
+  assert.equal(await page.locator('link[rel="canonical"]').getAttribute("href"), "https://catalogue.boutique.test/jewels/dev-unique-ring");
   assert.doesNotMatch(await page.content(), /PRIVATE_STOREFRONT_SENTINEL|DATABASE_URL|phase03_validator|lapalme_browser_reader/);
   await page.goto(origin + "/jewels/dev-repeatable-earrings");
   assert.match(await page.locator("main").innerText(), /EGP 2,450\.00/);
@@ -226,7 +226,7 @@ test("jewel gallery, EGP prices, variants, bespoke and enquiry destinations work
   assert.equal(await page.getByRole("button", { name: "Next photograph", exact: true }).count(), 0);
   await page.goto(origin + "/jewels/dev-bespoke-bracelet");
   assert.match(await page.locator("main").innerText(), /Photography is available/);
-  assert.equal(await page.getByRole("link", { name: "Discuss a bespoke piece" }).getAttribute("href"), "/#appointment");
+  assert.equal(await page.getByRole("link", { name: "Discuss a bespoke piece" }).getAttribute("href"), "/appointment");
   assert.equal(await page.getByRole("button", { name: /Add to cart|checkout/i }).count(), 0);
   await page.close();
 });
@@ -307,7 +307,7 @@ test("six editorial routes have metadata, semantic headings and truthful contact
     assert.match(await page.title(), /La Palme/);
     assert.ok((await page.locator('meta[name="description"]').getAttribute("content")).length > 30);
     const canonical = page.locator('link[rel="canonical"]');
-    if (await canonical.count()) assert.equal(await canonical.getAttribute("href"), "https://catalogue.example.invalid" + path);
+    if (await canonical.count()) assert.equal(await canonical.getAttribute("href"), "https://catalogue.boutique.test" + path);
     assert.equal(await page.locator('form,input[type="date"],input[type="time"],a[href^="tel:"],a[href*="wa.me"]').count(), 0);
     assert.equal(await page.locator('a[href^="mailto:"]').count(), 0);
     assert.doesNotMatch(await page.locator("main").innerText(), /contact@lapalmedorgems\.com|successfully submitted|appointment confirmed/i);

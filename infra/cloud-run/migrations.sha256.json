@@ -1,0 +1,62 @@
+[
+  {
+    "version": "0001",
+    "filename": "0001_catalogue.sql",
+    "sha256": "0026abfbc0657627c6d783970bbdbe84ad721f663311690f66e0828140ea47eb"
+  },
+  {
+    "version": "0002",
+    "filename": "0002_customers_admin_carts.sql",
+    "sha256": "3d2baf373e7f23d981a86839d16605bc95dd3969ef240d3f7d9bae36da17a369"
+  },
+  {
+    "version": "0003",
+    "filename": "0003_orders_payments.sql",
+    "sha256": "3eaa0df9e93931b16adc4adb6669f7cf7c2b1e300bc5973cedae72a3f6183757"
+  },
+  {
+    "version": "0004",
+    "filename": "0004_inventory.sql",
+    "sha256": "7906ea7c14ca02b546cd39cf4ef7bd1f944c51d85cba16217fdedd2876cb894f"
+  },
+  {
+    "version": "0005",
+    "filename": "0005_fulfillment_requests_audit.sql",
+    "sha256": "269dd9f4b3dd8493b7dff60ff7e3813809253abd1f31e24ea3fceea2328554b6"
+  },
+  {
+    "version": "0006",
+    "filename": "0006_migration_checksums.sql",
+    "sha256": "898fdb94614a1ca35899dae6e28af7ea932eedf4400ae0fc3ddb139fc36beba5"
+  },
+  {
+    "version": "0007",
+    "filename": "0007_admin_authentication.sql",
+    "sha256": "d425096c1607496ac6d8d2a7f8e33a80decbf77ffa77efcfb1950e294ce20bae"
+  },
+  {
+    "version": "0008",
+    "filename": "0008_catalogue_media.sql",
+    "sha256": "fd1f762717f49250907a464c8432f7d83cc5b86199a515be9fb18738d6ea2204"
+  },
+  {
+    "version": "0009",
+    "filename": "0009_guest_cart.sql",
+    "sha256": "187fd75b1d5bc82aeceaaec0cfcb72fa0faad51a38e878e5ec1ef297079716ae"
+  },
+  {
+    "version": "0010",
+    "filename": "0010_checkout_drafts.sql",
+    "sha256": "650c0d2f1398fd1754ca443d1f6862b7c0e0c7e34dda07917ed941c860ac238a"
+  },
+  {
+    "version": "0011",
+    "filename": "0011_test_payment_lifecycle.sql",
+    "sha256": "c181c82bf8162215059ec972990e97ff2eb18ec8dfc55d089bd0734832ac51f2"
+  },
+  {
+    "version": "0012",
+    "filename": "0012_order_fulfillment_administration.sql",
+    "sha256": "58f305376b4fef84467fd0f409a73b0189a950af94278f1fbb46bf78d23cfda5"
+  }
+]

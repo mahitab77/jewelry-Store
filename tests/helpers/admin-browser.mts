@@ -13,11 +13,12 @@ import { mockCloudinaryConfiguration } from "./cloudinary-mock.mts";
 import { paymentFixture } from "./payment-fixture.mts";
 import { paymentEnvironment } from "./paymob-mock.mts";
 import { orderFixture } from "./order-fixture.mts";
+import type { AdminRole } from "../../src/lib/admin/policy.ts";
 
 const moduleName = process.env.PLAYWRIGHT_MODULE ? pathToFileURL(resolve(process.env.PLAYWRIGHT_MODULE)).href : "playwright";
 const { chromium } = await import(moduleName);
 
-export function adminBrowserHarness(catalogue = false, cart = false, payments = false, orders = false) {
+export function adminBrowserHarness(catalogue = false, cart = false, payments = false, orders = false, options: { seedCatalogue?: boolean } = {}) {
   let browser: Awaited<ReturnType<typeof chromium.launch>>;
   let fixture: Awaited<ReturnType<typeof adminFixture>> & Partial<Pick<Awaited<ReturnType<typeof cartFixture>>, "cartUrl" | "readerUrl">> & Partial<Pick<Awaited<ReturnType<typeof paymentFixture>>, "paymentUrl">>;
   let tls: Server;
@@ -49,7 +50,7 @@ export function adminBrowserHarness(catalogue = false, cart = false, payments = 
     throw new Error("Temporary admin server did not become ready.");
   }
   before(async () => {
-    fixture = orders ? await orderFixture(origin) : payments ? await paymentFixture(origin) : cart ? await cartFixture(origin) : catalogue ? await catalogueFixture(origin) : await adminFixture(origin);
+    fixture = orders ? await orderFixture(origin) : payments ? await paymentFixture(origin) : cart ? await cartFixture(origin) : catalogue ? await catalogueFixture(origin, options.seedCatalogue ?? true) : await adminFixture(origin);
     if(payments)for(const[key,value]of Object.entries(paymentEnvironment))if(/KEY|SECRET/.test(key))secrets.push(value);
     if (!process.env.ADMIN_TEST_TLS_KEY || !process.env.ADMIN_TEST_TLS_CERT) throw new Error("Set disposable local TLS paths; production cookie security is never disabled.");
     await server(3120, true); await server(3121, false);
@@ -82,13 +83,18 @@ export function adminBrowserHarness(catalogue = false, cart = false, payments = 
       for (const secret of [...secrets, fixture?.cartUrl, fixture?.readerUrl, fixture?.paymentUrl].filter(Boolean) as string[]) assert.ok(!serverOutput.includes(secret), "A guest credential or personal fixture field appeared in temporary server output.");
     }
   });
-  return { origin, current: () => ({ browser, fixture }), trackSecret(value: string) { secrets.push(value); }, async signIn(page: Awaited<ReturnType<typeof browser.newPage>>) {
+  return { origin, current: () => ({ browser, fixture }), trackSecret(value: string) { secrets.push(value); }, async signIn(page: Awaited<ReturnType<typeof browser.newPage>>, role: AdminRole = "OWNER") {
     await page.goto(origin + "/admin/login", { waitUntil: "networkidle" });
-    await page.getByLabel("Email address", { exact: true }).fill(fixture.users.OWNER.email);
+    await page.getByLabel("Email address", { exact: true }).fill(fixture.users[role].email);
     await page.getByLabel("Password", { exact: true }).fill(fixture.password);
     await page.getByRole("button", { name: "Sign in", exact: true }).click(); await page.waitForURL(origin + "/admin");
-    assert.match(await page.locator("h1").innerText(), /Welcome, Fixture OWNER/);
+    assert.ok((await page.locator("h1").innerText()).includes(`Welcome, Fixture ${role}`));
   }, async screenshot(page: Awaited<ReturnType<typeof browser.newPage>>, name: string) {
-    if (process.env.ADMIN_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.ADMIN_SCREENSHOT_DIR, `${name}.png`) });
+    if (process.env.ADMIN_SCREENSHOT_DIR) {
+      // A public-detail tab may still be foregrounded after the editor round trip.
+      // Bring the capture target forward so Chromium can paint it normally.
+      await page.bringToFront();
+      await page.screenshot({ path: join(process.env.ADMIN_SCREENSHOT_DIR, `${name}.png`), animations: "disabled", caret: "hide", timeout: 30000 });
+    }
   } };
 }

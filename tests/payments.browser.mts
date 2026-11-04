@@ -84,8 +84,9 @@ test('concurrent HTTP submissions share one attempt and order status rejects a d
   try{
     await start(a);await save(a);const responses=await Promise.all([initiate(a),initiate(a)]),bodies=await Promise.all(responses.map(r=>r.json()));assert.ok(responses.every(r=>r.status()===200));assert.equal(bodies[0].orderReference,bodies[1].orderReference);const reference=bodies[0].orderReference;
     assert.equal((await f.data.query('SELECT count(*) FROM payments WHERE order_id=$1',[reference])).rows[0].count,'1');await start(b);const foreign=await b.request.get(origin+'/api/orders/'+reference);assert.equal(foreign.status(),404);
-    const page=await b.newPage();await page.goto(origin+'/orders/'+reference,{waitUntil:'networkidle'});await page.getByRole('heading',{name:'Order unavailable',exact:true}).waitFor();assert.ok(!(await page.locator('main').innerText()).includes(checkoutContact.email));
-    await page.goto(origin+'/orders/'+randomUUID(),{waitUntil:'networkidle'});await page.getByRole('heading',{name:'Order unavailable',exact:true}).waitFor();await notify(a,reference,{success:false,error_occured:true});
+    // Order status polls. Its explicit denial state proves privacy without waiting for idle traffic.
+    const page=await b.newPage();await page.goto(origin+'/orders/'+reference,{waitUntil:'domcontentloaded'});await page.getByRole('heading',{name:'Order unavailable',exact:true}).waitFor();assert.ok(!(await page.locator('main').innerText()).includes(checkoutContact.email));
+    await page.goto(origin+'/orders/'+randomUUID(),{waitUntil:'domcontentloaded'});await page.getByRole('heading',{name:'Order unavailable',exact:true}).waitFor();await notify(a,reference,{success:false,error_occured:true});
   }finally{await a.close();await b.close();}
 });
 test('cart edits made in another tab survive verified payment and retain the correct bag count',async()=>{

@@ -1,15 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useId, useState } from "react";
+import { primaryNavigation } from "@/lib/navigation";
 import { CartBag } from "./cart/CartBag";
-
-const navLinks = [
-  { label: "Home", href: "#" },
-  { label: "Bespoke", href: "#bespoke" },
-  { label: "Heritage", href: "#heritage" },
-  { label: "Contact", href: "#contact" },
-] as const;
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
@@ -66,15 +61,15 @@ export function SiteHeader() {
           </span>
         </a>
 
-        <div className="hidden items-center gap-9 text-[0.82rem] uppercase tracking-[0.18em] text-[rgba(229,213,189,0.78)] lg:flex">
-          {navLinks.map((link) => (
-            <a
+        <div className="hidden items-center gap-1 text-[0.82rem] uppercase tracking-[0.18em] text-[rgba(229,213,189,0.78)] lg:mr-7 lg:flex xl:gap-5">
+          {primaryNavigation.map((link) => (
+            <Link
               key={link.label}
               href={link.href}
               className="nav-link shrink-0 transition-colors duration-300 hover:text-gold"
             >
               {link.label}
-            </a>
+            </Link>
           ))}
         </div>
 
@@ -102,14 +97,14 @@ export function SiteHeader() {
             />
           </button>
 
-          <a
-            href="#appointment"
+          <Link
+            href="/appointment"
             className="navbar-cta inline-flex min-h-10 items-center justify-center px-3.5 text-[0.65rem] font-semibold uppercase tracking-[0.14em] sm:min-h-11 sm:px-5 sm:text-xs sm:tracking-[0.18em]"
             onClick={close}
           >
             <span className="sm:hidden">Book</span>
             <span className="hidden sm:inline">Book Appointment</span>
-          </a>
+          </Link>
         </div>
       </nav>
 
@@ -125,15 +120,15 @@ export function SiteHeader() {
         }
       >
         <div className="maison-container flex flex-col py-2 pb-4">
-          {navLinks.map((link) => (
-            <a
+          {primaryNavigation.map((link) => (
+            <Link
               key={link.label}
               href={link.href}
               className="nav-link border-b border-[rgba(217,189,122,0.12)] py-3.5 text-[0.78rem] font-semibold uppercase tracking-[0.2em] text-[rgba(229,213,189,0.88)] transition-colors last:border-b-0 hover:text-gold"
               onClick={close}
             >
               {link.label}
-            </a>
+            </Link>
           ))}
         </div>
       </div>

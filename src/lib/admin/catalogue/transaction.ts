@@ -21,7 +21,7 @@ export async function catalogueTransaction<T>(headers: Headers, operation: (clie
     if (error instanceof CatalogueAdminError || error instanceof AdminAccessError) throw error;
     const code = (error as { code?: string }).code;
     if (code === "23505") throw new CatalogueAdminError("That slug, SKU or assignment is already in use. Choose a unique value.", 409);
-    if (["23503", "23514", "22P02"].includes(code ?? "")) throw new CatalogueAdminError("A referenced record or configuration is no longer valid. Reload and review the fields.", 409);
+    if (["23503", "23001", "23514", "22P02"].includes(code ?? "")) throw new CatalogueAdminError("A referenced record or configuration is no longer valid. Reload and review the fields.", 409);
     throw new CatalogueAdminError("The catalogue could not be saved. No partial changes were committed.", 503);
   } finally { client.release(); }
 }

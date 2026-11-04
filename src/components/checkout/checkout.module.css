@@ -1,9 +1,13 @@
 .steps { display: flex; flex-wrap: wrap; gap: .8rem 1.5rem; padding: 0; list-style: none; margin-block: 2rem; color: var(--beige); font-size: .7rem; text-transform: uppercase; letter-spacing: .12em; }
 .steps [aria-current="step"] { color: var(--gold); text-decoration: underline; text-underline-offset: 6px; }
+.content { display: flow-root; min-height: 52rem; }
+.orderContent { min-height: 36rem; }
+.orderLoading { border: 1px solid var(--border); padding: 1.2rem; color: var(--beige); font-size: .85rem; line-height: 1.8; }
 .panel { border-top: 1px solid var(--border); padding-block: 1.5rem; margin-bottom: 1rem; min-width: 0; }
 .panel legend, .panel h2 { font-family: var(--font-cormorant),Georgia,serif; color: var(--ivory); font-size: 2.1rem; line-height: 1.2; padding-right: 1rem; margin-bottom: 1rem; }
 .grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1.2rem; }
 .field { display: flex; flex-direction: column; gap: .5rem; color: var(--ivory); font-size: .85rem; min-width: 0; margin-bottom: .7rem; }
+.fieldCue { color: var(--beige); font-size: .7rem; margin-left: .3rem; }
 .field input, .field select, .field textarea { width: 100%; min-width: 0; min-height: 46px; border: 1px solid var(--border); padding: .75rem; background: #090807; color: var(--ivory); font: inherit; }
 .field textarea { min-height: 100px; resize: vertical; }
 .field select option { background: #090807; }
@@ -13,6 +17,8 @@
 .methods label { display: flex; align-items: center; gap: .65rem; min-height: 44px; color: var(--ivory); font-size: .85rem; }
 .methods input { accent-color: var(--gold); width: 18px; height: 18px; }
 .methods label:has(input:disabled) { opacity: .5; }
+.methods[aria-invalid="true"] { border-left: 1px solid var(--gold); padding-left: .8rem; }
+.methods:focus-visible { outline: 1px solid var(--gold); outline-offset: 3px; }
 .actions { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin-block: 1rem; }
 .line { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 1rem; padding-block: 1rem; border-bottom: 1px solid var(--border); }
 .orderLine { display: block; }
@@ -25,4 +31,5 @@
 .review p, .review address { color: var(--beige); font-size: .85rem; line-height: 1.8; font-style: normal; }
 .root :is(input,select,textarea,button,a):focus-visible { outline: 1px solid var(--gold); outline-offset: 3px; }
 .root button:disabled { opacity: .45; cursor: not-allowed; }
-@media(max-width:767px) { .grid { grid-template-columns: minmax(0,1fr); } .actions > * { flex: 1 1 150px; } }
+@media(min-width:768px) and (max-width:1023px) { .content { min-height: 56rem; } }
+@media(max-width:767px) { .content { min-height: 113rem; } .orderContent { min-height: 56rem; } .grid { grid-template-columns: minmax(0,1fr); } .actions > * { flex: 1 1 150px; } }

@@ -30,7 +30,7 @@ export function CatalogueNotice({ kind }: { kind: "not-configured" | "unavailabl
   return <section className={`maison-container ${styles.notice}`}>
     <p className={styles.eyebrow}>La Palme d&apos;Or Gems</p><div className="gold-hairline mx-auto" />
     <h1 className="font-display">{title}</h1><p>{message}</p>
-    <Link className={`hero-cta hero-primary-button ${styles.button}`} href={kind === "not-found" ? "/collections" : "/#contact"}>
+    <Link className={`hero-cta hero-primary-button ${styles.button}`} href={kind === "not-found" ? "/collections" : "/contact"}>
       {kind === "not-found" ? "Explore the collections" : "Contact the boutique"}
     </Link>
   </section>;

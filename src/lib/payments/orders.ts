@@ -90,11 +90,23 @@ export async function retryLocal(token:string, reference:string, previousReferen
   },false,'payment');
 }
 
+// Both the summary and its short-lived display permission use the same owner
+// predicate. A display permission is never evidence of a payment outcome.
+const ownedOrderWhere=`id=$1 AND test_mode AND guest_session_hash=$2 AND guest_access_expires_at>clock_timestamp()
+      AND EXISTS(SELECT 1 FROM carts WHERE session_token_hash=$2 AND status='ACTIVE' AND customer_profile_id IS NULL AND expires_at>clock_timestamp())`;
+export async function readOrderAccess(token:string|null,reference:string):Promise<{reference:string;verified:true;validForMs:number}|null> {
+  if(!token)return null;
+  return withTransaction(async client=>{
+    const access=(await client.query<{validForMs:number}>(`SELECT LEAST(5000,FLOOR(EXTRACT(EPOCH FROM
+      (LEAST(guest_access_expires_at,(SELECT expires_at FROM carts WHERE session_token_hash=$2))-statement_timestamp()))*1000))::INTEGER AS "validForMs"
+      FROM orders WHERE ${ownedOrderWhere}`,[reference,tokenHash(token)])).rows[0];
+    return access && access.validForMs>0?{reference,verified:true,validForMs:access.validForMs}:null;
+  },true,'payment');
+}
 export async function readOrder(token:string|null,reference:string):Promise<OrderView|null> {
   if(!token)return null;const hash=tokenHash(token);
   return withTransaction(async client=>{
-    const o=(await client.query<OrderRow>(`SELECT * FROM orders WHERE id=$1 AND test_mode AND guest_session_hash=$2 AND guest_access_expires_at>clock_timestamp()
-      AND EXISTS(SELECT 1 FROM carts WHERE session_token_hash=$2 AND status='ACTIVE' AND customer_profile_id IS NULL AND expires_at>clock_timestamp())`,[reference,hash])).rows[0];if(!o)return null;
+    const o=(await client.query<OrderRow>(`SELECT * FROM orders WHERE ${ownedOrderWhere}`,[reference,hash])).rows[0];if(!o)return null;
     const items=(await client.query<{name:string;sku:string;configuration:string;quantity:number;unitPriceMinor:string;lineTotalMinor:string}>(`SELECT product_name_snapshot AS name,sku_snapshot AS sku,COALESCE(configuration_snapshot,'') AS configuration,quantity,unit_price_minor::TEXT AS "unitPriceMinor",line_total_minor::TEXT AS "lineTotalMinor" FROM order_items WHERE order_id=$1 ORDER BY created_at,id`,[o.id])).rows;
     const p=(await client.query<PaymentRow>('SELECT * FROM payments WHERE order_id=$1 AND test_mode ORDER BY created_at DESC,id DESC LIMIT 1',[o.id])).rows[0];
     const address=(await client.query<{destination:string}>(`SELECT concat_ws(', ',street_address,building,floor_unit,city_area,governorate,'Egypt') AS destination FROM order_addresses WHERE order_id=$1`,[o.id])).rows[0];

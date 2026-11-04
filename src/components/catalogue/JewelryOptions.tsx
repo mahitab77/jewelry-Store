@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { PublicProductDetail } from "../../lib/catalogue/types.ts";
-import { formatEgp } from "../../lib/catalogue/presentation.ts";
+import { formatEgp, variantOptionLabels } from "../../lib/catalogue/presentation.ts";
 import styles from "./catalogue.module.css";
 import { AddToCart } from "../cart/AddToCart";
 
@@ -11,6 +11,7 @@ type Props = Pick<PublicProductDetail, "variants" | "productType" | "salesMode" 
 export function JewelryOptions({ variants, productType, salesMode, canEnquire }: Props) {
   const [selectedId, setSelectedId] = useState(() => (variants.find((v) => v.canPurchase) ?? variants[0])?.id);
   const selected = variants.find((v) => v.id === selectedId);
+  const labels = variantOptionLabels(variants);
   const enquiryOnly = productType === "BESPOKE" || salesMode === "ENQUIRY_ONLY";
   const availability = enquiryOnly ? "By private enquiry" : selected?.availability === "OUT_OF_STOCK" ? "Currently unavailable"
     : selected?.canPurchase ? "Available to purchase" : "Availability on request";
@@ -18,8 +19,9 @@ export function JewelryOptions({ variants, productType, salesMode, canEnquire }:
     <p className={styles.detailPrice} aria-live="polite">{formatEgp(selected?.price ?? null)}</p>
     {variants.length > 1 ? <fieldset className={styles.options}><legend>Choose a configuration</legend>
       {variants.map((variant, i) => <label key={variant.id}>
-        <input type="radio" name="jewelry-variant" value={variant.id} checked={selectedId === variant.id} onChange={() => setSelectedId(variant.id)} />
-        <span>{variant.size || variant.configuration || (i === 0 ? "Standard configuration" : `Configuration ${i + 1}`)}
+        <input type="radio" name="jewelry-variant" value={variant.id} checked={selectedId === variant.id} onChange={() => setSelectedId(variant.id)}
+          aria-label={`${labels[i].accessible} · ${formatEgp(variant.price)}${variant.availability === "OUT_OF_STOCK" ? " · Currently unavailable" : ""}`} />
+        <span>{labels[i].visible}
           <small>{formatEgp(variant.price)}{variant.availability === "OUT_OF_STOCK" ? " · Currently unavailable" : ""}</small></span>
       </label>)}
     </fieldset> : null}
@@ -29,7 +31,7 @@ export function JewelryOptions({ variants, productType, salesMode, canEnquire }:
       : enquiryOnly ? "A private conversation is the first step. Speak with us about the piece, its details, and your preferences."
         : "Our boutique can share further details. Availability is confirmed personally."}</p>
     {selected?.canPurchase && !enquiryOnly ? <AddToCart key={selected.id} variantId={selected.id} /> : null}
-    {canEnquire || selected?.canPurchase ? <Link href={productType === "BESPOKE" ? "/#appointment" : "/#contact"}
+    {canEnquire || selected?.canPurchase ? <Link href={productType === "BESPOKE" ? "/appointment" : "/contact"}
       className={`hero-cta hero-primary-button ${styles.button}`}>
       {productType === "BESPOKE" ? "Discuss a bespoke piece" : canEnquire ? "Enquire with the boutique" : "Contact the boutique"}
     </Link> : <Link href="/collections" className={`hero-cta hero-secondary-button ${styles.button}`}>Explore the collections</Link>}

@@ -114,7 +114,7 @@ test("mobile homepage bag, navigation, purchase control and cart quantities rema
     await page.goto(origin + "/jewels/dev-repeatable-earrings", { waitUntil: "networkidle" }); await healthy(page);
     await operation(page, () => page.getByRole("button", { name: "Add to bag", exact: true }).click());
     await page.goto(origin + "/cart", { waitUntil: "networkidle" }); await count(page, 1);
-    await operation(page, () => page.getByRole("spinbutton", { name: "Quantity for [DEVELOPMENT] repeatable-earrings", exact: true }).fill("3"), "PATCH");
+    await operation(page, async () => { const input = page.getByRole("spinbutton", { name: "Quantity for [DEVELOPMENT] repeatable-earrings", exact: true }); await input.fill("3"); await input.press("Enter"); }, "PATCH");
     await count(page, 3); assert.match(await page.locator("[data-cart-subtotal]").innerText(), /7,350\.00/);
     await healthy(page); await page.evaluate(() => { window.scrollTo(0, 0); return document.fonts.ready; }); await screenshot(page, "cart-mobile");
     await page.reload({ waitUntil: "networkidle" }); await count(page, 3);

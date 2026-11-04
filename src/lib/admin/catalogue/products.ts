@@ -9,6 +9,9 @@ import { publicImageSource } from "../../catalogue/presentation.ts";
 
 const stoneColumns = ["specification_kind", "stone_type", "variety", "shape", "color", "carat_weight", "origin", "treatment_information", "laboratory", "report_reference"];
 function stoneValues(s: StoneInput) { return [s.kind, s.type, s.variety || null, s.shape, s.color, s.caratWeight || null, s.origin || null, s.treatment || null, s.laboratory || null, s.reportReference || null]; }
+function assertIndividualStock(onHand: number, hasIndividual: boolean) {
+  if (hasIndividual && onHand > 1) fail("A variant with an individual gemstone can hold at most one unit.", 409);
+}
 
 async function saveStones(client: PoolClient, adminId: string, productId: string, variantId: string, stones: StoneInput[]) {
   const old = (await client.query(`SELECT pg.id,pg.gemstone_id,pg.quantity,pg.gemstone_role,pg.total_carat_weight::TEXT,pg.display_order,
@@ -65,8 +68,11 @@ async function assertPublishable(client: PoolClient, id: string, p: ProductInput
   const media = (await client.query("SELECT id,external_media_reference AS reference,media_type AS type,alt_text AS \"altText\",is_primary AS \"isPrimary\" FROM product_media WHERE product_id=$1 AND media_type='IMAGE'", [id])).rows;
   if (!media.some((m) => m.isPrimary && publicImageSource(m)) || media.some((m) => !m.altText?.trim() || m.altText.trim().length < 5)) fail("Publication needs a primary photograph and meaningful alt text of at least five characters for every image.");
   // Lock current inventory without accepting reserved values from an editor.
-  const stocks = await client.query("SELECT i.* FROM inventory i JOIN product_variants v ON v.id=i.variant_id WHERE v.product_id=$1 FOR UPDATE OF i", [id]);
+  const stocks = await client.query(`SELECT i.*,EXISTS(SELECT 1 FROM product_gemstones pg
+    WHERE pg.variant_id=i.variant_id AND pg.specification_kind='INDIVIDUAL') AS has_individual
+    FROM inventory i JOIN product_variants v ON v.id=i.variant_id WHERE v.product_id=$1 FOR UPDATE OF i`, [id]);
   if (variants.some((v) => !stocks.rows.some((i) => i.variant_id === v.id)) || stocks.rows.some((i) => i.on_hand < i.reserved || i.reserved < 0)) fail("Review the inventory configuration before publication.");
+  for (const stock of stocks.rows) assertIndividualStock(stock.on_hand, stock.has_individual);
 }
 
 export async function saveProduct(headers: Headers, id: string | null, input: unknown, runtime: AdminRuntime = getAdminRuntime()): Promise<string> {
@@ -104,6 +110,10 @@ export async function saveProduct(headers: Headers, id: string | null, input: un
         await client.query("INSERT INTO inventory(variant_id,product_type,on_hand) VALUES($1,$2,$3)", [variantId, p.productType, v.initialStock ?? 0]);
         await catalogueAudit(client, adminId, productId, "CATALOGUE_INVENTORY_INITIALISED", { variantId, before: 0, after: v.initialStock ?? 0, reserved: 0, reason: v.stockReason || "Initial zero stock" });
       }
+      if (v.gemstones.some((stone) => stone.kind === "INDIVIDUAL")) {
+        const stock = (await client.query("SELECT on_hand FROM inventory WHERE variant_id=$1 FOR UPDATE", [variantId])).rows[0];
+        assertIndividualStock(stock?.on_hand ?? 0, true);
+      }
       await saveStones(client, adminId, productId, variantId, v.gemstones);
     }
     const status = submission.action === "publish" ? "PUBLISHED" : submission.action === "unpublish" ? "DRAFT" : submission.action === "archive" ? "ARCHIVED" : old?.status ?? "DRAFT";
@@ -129,8 +139,11 @@ export async function adjustInventory(headers: Headers, productId: string, varia
     const variant = (await client.query("SELECT product_type FROM product_variants WHERE id=$1 AND product_id=$2", [variantId, productId])).rows[0];
     if (!variant) fail("Variant not found for this product.", 404);
     await client.query("INSERT INTO inventory(variant_id,product_type) VALUES($1,$2) ON CONFLICT(variant_id) DO NOTHING", [variantId, variant.product_type]);
-    const stock = (await client.query("SELECT * FROM inventory WHERE variant_id=$1 FOR UPDATE", [variantId])).rows[0];
+    const stock = (await client.query(`SELECT i.*,EXISTS(SELECT 1 FROM product_gemstones pg
+      WHERE pg.variant_id=i.variant_id AND pg.specification_kind='INDIVIDUAL') AS has_individual
+      FROM inventory i WHERE variant_id=$1 FOR UPDATE OF i`, [variantId])).rows[0];
     const next = stock.on_hand + delta;
+    assertIndividualStock(next, stock.has_individual);
     if (next < stock.reserved || next < 0 || next > 1000000 || (variant.product_type === "ONE_OF_A_KIND" && next > 1) || variant.product_type === "BESPOKE") fail("The adjustment would conflict with reserved units or the product's stock limits.", 409);
     await client.query("UPDATE inventory SET on_hand=$2,updated_at=clock_timestamp() WHERE variant_id=$1", [variantId, next]);
     await touchProduct(client, productId);

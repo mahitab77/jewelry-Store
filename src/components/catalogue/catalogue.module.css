@@ -44,10 +44,10 @@
 .imagePlaceholder:global(.font-display), .imagePlaceholder > :global(.font-display) { font-size: clamp(1.8rem,4vw,2.8rem); line-height: 1.12; }
 .imagePlaceholder > p + p { max-width: 23rem; margin-top: 1rem; font-size: .85rem; line-height: 1.8; }
 .empty { max-width: 42rem; margin: 1rem auto; padding: clamp(2rem,5vw,4rem) 1.5rem; border: 1px solid rgba(169,133,58,.35); text-align: center; }
-.empty .eyebrow { color: var(--gold-deep); }
+.empty .eyebrow { color: var(--charcoal); }
 .empty h2 { margin-block: 1rem; font-size: clamp(2.3rem,5vw,3.5rem); line-height: 1.1; }
 .empty p { line-height: 1.8; }
-.empty a { display: inline-flex; align-items: center; min-height: 44px; margin-top: 1.5rem; color: var(--gold-deep); text-decoration: underline; text-underline-offset: 6px; }
+.empty a { display: inline-flex; align-items: center; min-height: 44px; margin-top: 1.5rem; color: var(--charcoal); text-decoration: underline; text-underline-offset: 6px; }
 .pagination { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: .75rem; margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid rgba(169,133,58,.35); font-size: .78rem; }
 .pagination a { display: inline-flex; align-items: center; min-height: 44px; }
 .pagination a[rel="next"] { justify-self: end; }
@@ -78,7 +78,8 @@
 .detailPrice { margin-top: 1.5rem; color: var(--gold); font-size: 1.15rem; font-weight: 600; }
 .options { display: grid; gap: .6rem; margin-top: 1.7rem; min-width: 0; }
 .options legend { margin-bottom: .8rem; color: var(--beige); font-size: .75rem; letter-spacing: .08em; }
-.options label { display: flex; align-items: center; gap: .8rem; min-height: 56px; padding: .8rem 1rem; border: 1px solid var(--border); cursor: pointer; font-size: .85rem; }
+.options label { display: flex; align-items: center; gap: .8rem; min-width: 0; min-height: 56px; padding: .8rem 1rem; border: 1px solid var(--border); cursor: pointer; font-size: .85rem; }
+.options label > span { min-width: 0; overflow-wrap: anywhere; }
 .options label:has(input:checked) { border-color: var(--gold); background: rgba(217,189,122,.06); }
 .options input { accent-color: var(--gold); flex-shrink: 0; width: 17px; height: 17px; }
 .options small { display: block; margin-top: .35rem; color: var(--beige); font-size: .73rem; }

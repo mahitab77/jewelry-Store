@@ -49,6 +49,8 @@ DECLARE
     reservation UUID;
     category UUID;
     affected INTEGER;
+    -- PostgreSQL 18 gives parent-side RESTRICT failures their own SQLSTATE.
+    restrict_state TEXT := CASE WHEN current_setting('server_version_num')::INTEGER >= 180000 THEN '23001' ELSE '23503' END;
 BEGIN
     IF (SELECT count(*) FROM schema_migrations) <> 5 THEN RAISE EXCEPTION 'Expected five applied migrations'; END IF;
     IF (SELECT count(*) FROM pg_tables WHERE schemaname = 'public') <> 31 THEN RAISE EXCEPTION 'Expected 30 business tables and ledger'; END IF;
@@ -206,7 +208,7 @@ BEGIN
         VALUES (purchase, 'Other snapshot', 'test-only', 'Fixture governorate', 'Fixture area', 'Other street');
     PERFORM pg_temp.expect_rejection(format('INSERT INTO fulfillment_arrangements(order_id, method, delivery_address_id) VALUES (%L, ''PRIVATE_DELIVERY'', %L)', delivery_order, (SELECT id FROM order_addresses WHERE order_id = purchase)), '23503', 'fulfillment_arrangements_address_fk');
     INSERT INTO fulfillment_arrangements(order_id, method, delivery_address_id) VALUES (delivery_order, 'PRIVATE_DELIVERY', address);
-    PERFORM pg_temp.expect_rejection(format('DELETE FROM order_addresses WHERE id = %L', address), '23503', 'fulfillment_arrangements_address_fk');
+    PERFORM pg_temp.expect_rejection(format('DELETE FROM order_addresses WHERE id = %L', address), restrict_state, 'fulfillment_arrangements_address_fk');
 
     INSERT INTO bespoke_requests(contact_name, contact_phone, message) VALUES ('Schema guest', 'test-only', 'Schema constraint fixture');
     INSERT INTO appointment_requests(contact_name, contact_email, message) VALUES ('Schema guest', 'schema@example.invalid', 'Schema constraint fixture');
@@ -219,10 +221,10 @@ BEGIN
         VALUES ('ADMIN', staff, 'schema.verify', 'orders', purchase);
     PERFORM pg_temp.expect_rejection('UPDATE audit_events SET metadata = ''[]''::jsonb', '23514', 'audit_events_bounded_metadata');
     PERFORM pg_temp.expect_rejection('UPDATE audit_events SET metadata = jsonb_build_object(''oversize'', repeat(''x'', 4096))', '23514', 'audit_events_bounded_metadata');
-    PERFORM pg_temp.expect_rejection(format('DELETE FROM orders WHERE id = %L', purchase), '23503');
-    PERFORM pg_temp.expect_rejection(format('DELETE FROM payments WHERE id = %L', attempt), '23503', 'payment_events_payment_id_fkey');
-    PERFORM pg_temp.expect_rejection(format('DELETE FROM product_variants WHERE id = %L', repeat_variant), '23503');
-    PERFORM pg_temp.expect_rejection(format('DELETE FROM admin_users WHERE id = %L', staff), '23503');
+    PERFORM pg_temp.expect_rejection(format('DELETE FROM orders WHERE id = %L', purchase), restrict_state);
+    PERFORM pg_temp.expect_rejection(format('DELETE FROM payments WHERE id = %L', attempt), restrict_state, 'payment_events_payment_id_fkey');
+    PERFORM pg_temp.expect_rejection(format('DELETE FROM product_variants WHERE id = %L', repeat_variant), restrict_state);
+    PERFORM pg_temp.expect_rejection(format('DELETE FROM admin_users WHERE id = %L', staff), restrict_state);
     DELETE FROM customer_profiles WHERE id = customer;
     IF (SELECT customer_profile_id IS NOT NULL OR customer_name <> 'Snapshot name' FROM orders WHERE id = purchase)
         OR EXISTS (SELECT 1 FROM customer_addresses WHERE customer_profile_id = customer)

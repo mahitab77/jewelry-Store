@@ -60,7 +60,7 @@ export async function CatalogueListing({ kind, slug = "", searchParams }: {
           : <div className={styles.empty}><p className={styles.eyebrow}>A considered selection</p>
             <h2 className="font-display">{query.page > 1 ? "You have reached the end of this selection." : "The next chapter is taking shape."}</h2>
             <p>{query.page > 1 ? "Return to the beginning to explore the available pieces." : "There are no published pieces in this collection at present. Our boutique is here to help with a personal request."}</p>
-            <Link href={query.page > 1 ? path : "/#contact"}>{query.page > 1 ? "Back to the first page" : "Speak with the boutique"}</Link>
+            <Link href={query.page > 1 ? path : "/contact"}>{query.page > 1 ? "Back to the first page" : "Speak with the boutique"}</Link>
           </div>}
         {query.page > 1 || products.hasMore ? <nav className={styles.pagination} aria-label="Catalogue pagination">
           {query.page > 1 ? <Link href={cataloguePageHref(path, query.page - 1, query.sort)} rel="prev">← Previous page</Link> : <span />}

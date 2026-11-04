@@ -38,6 +38,17 @@ const visibleCategories = `WITH RECURSIVE visible_categories AS (
 )`;
 const publicProduct = "p.status = 'PUBLISHED' AND p.published_at <= CURRENT_TIMESTAMP";
 const publicCollection = "c.status = 'PUBLISHED' AND c.published_at <= CURRENT_TIMESTAMP";
+
+// Same publication/ancestor rules as catalogue reads; no customer tables or live
+// inventory aggregation. Fetch one extra URL to refuse silent sitemap truncation.
+export async function getPublicSitemapPaths():Promise<{path:string}[]> {
+  const genuine=(alias:string)=>`${alias}.id::TEXT NOT LIKE '02000000-0000-4000-8000-%' AND ${alias}.name NOT LIKE '[DEVELOPMENT]%' AND ${alias}.slug NOT LIKE 'dev-%'`;
+  return queryRows<{path:string}>(`${visibleCategories}
+    SELECT '/collections/'||c.slug AS path FROM visible_categories c WHERE ${genuine('c')}
+    UNION ALL SELECT '/collections/edit/'||c.slug FROM public.collections c WHERE ${publicCollection} AND ${genuine('c')}
+    UNION ALL SELECT '/jewels/'||p.slug FROM public.products p WHERE ${publicProduct} AND ${genuine('p')}
+    ORDER BY path LIMIT 49993`);
+}
 const categoryColumns = 'c.id, c.parent_id AS "parentId", c.slug, c.name, c.description';
 const collectionColumns = "c.id, c.slug, c.name, c.description";
 

@@ -1,6 +1,25 @@
-import type { ProductListOptions, ProductType, PublicMedia, PublicPrice } from "./types.ts";
+import type { ProductListOptions, ProductType, PublicMedia, PublicPrice, PublicVariant } from "./types.ts";
 
 export const PAGE_SIZE = 12;
+
+// Compact visible options retain their complete persisted description for assistive
+// technology and the selected specifications below the controls. SKU disambiguates
+// legacy duplicates and descriptions that need shortening on a narrow screen.
+export function variantOptionLabels(variants: readonly PublicVariant[]): { visible: string; accessible: string }[] {
+  const descriptions = variants.map((variant, index) => {
+    const metal = [variant.metalType, variant.metalPurity, variant.metalColor].filter(Boolean).join(" ");
+    const parts = [...new Set([variant.size ? `Size ${variant.size}` : "", variant.configuration, metal].filter((part): part is string => Boolean(part?.trim())).map((part) => part.trim()))];
+    if (!variant.size && !variant.configuration) parts.unshift(index === 0 ? "Standard configuration" : `Configuration ${index + 1}`);
+    return parts;
+  });
+  const full = descriptions.map((parts) => parts.join(" · "));
+  return descriptions.map((parts, index) => {
+    const compact = parts.map((part) => [...part].length > 48 ? [...part].slice(0, 48).join("") + "…" : part).join(" · ");
+    const needsReference = compact !== full[index] || full.filter((description) => description === full[index]).length > 1;
+    const reference = needsReference ? ` · Reference ${variants[index].sku}` : "";
+    return { visible: compact + reference, accessible: full[index] + reference };
+  });
+}
 export type CatalogueQuery = Record<string, string | string[] | undefined>;
 export type ListingKind = "all" | "category" | "editorial";
 

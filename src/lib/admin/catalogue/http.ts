@@ -19,7 +19,7 @@ async function bodyBytes(request: Request, limit: number) {
   } finally { reader.releaseLock(); }
   return new Uint8Array(Buffer.concat(chunks));
 }
-async function jsonBody(request: Request) {
+export async function jsonBody(request: Request) {
   if (!/^application\/json(?:;\s*charset=utf-8)?$/i.test(request.headers.get("content-type") ?? "")) fail("Use a JSON request.", 415);
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await bodyBytes(request, 262144))) as unknown; }
   catch (error) { if (error instanceof CatalogueAdminError) throw error; return fail("Invalid JSON request."); }
@@ -67,7 +67,7 @@ export async function catalogueHttp(request: Request, path: string[], suppliedRu
     return json({ id: productId, message: feedback, product: await readEditor(request.headers, productId, runtime), history: await productAuditHistory(request.headers, productId, runtime) });
   } catch (error) {
     if (error instanceof AdminAccessError) return json({ message: "Administrator catalogue access is required." }, error.status);
-    if (error instanceof CatalogueAdminError) return json({ message: error.message }, error.status);
+    if (error instanceof CatalogueAdminError) return json({ message: error.message, ...(error.fieldPath ? { fieldErrors: { [error.fieldPath]: error.message } } : {}) }, error.status);
     return json({ message: "The catalogue is temporarily unavailable. Reload to check the current state before retrying." }, 503);
   }
 }

@@ -7,10 +7,11 @@ import { cloudinaryMock, mockCloudinaryConfiguration } from "./helpers/cloudinar
 import { cloudinaryProvider, preparePhoto, MAX_PHOTO_BYTES } from "../src/lib/media/cloudinary.ts";
 import { adminPhotograph, publicPhotograph } from "../src/lib/media/delivery.ts";
 import { saveProduct, adjustInventory } from "../src/lib/admin/catalogue/products.ts";
-import { readEditor, listAdminProducts, productAuditHistory } from "../src/lib/admin/catalogue/read.ts";
+import { catalogueChoices, readEditor, listAdminProducts, productAuditHistory } from "../src/lib/admin/catalogue/read.ts";
 import { arrangePhotos, removePhoto, retryPhotoCleanup, uploadPhoto } from "../src/lib/admin/catalogue/media.ts";
 import { catalogueHttp } from "../src/lib/admin/catalogue/http.ts";
 import { CatalogueAdminError, egpToMinor } from "../src/lib/admin/catalogue/validation.ts";
+import { catalogueTransaction } from "../src/lib/admin/catalogue/transaction.ts";
 import { AdminAccessError } from "../src/lib/admin/authorization.ts";
 import { getPublishedProductBySlug } from "../src/lib/catalogue/repository.ts";
 import { developmentId } from "../db/tools/seed.ts";
@@ -30,6 +31,17 @@ async function create(name: string, extra: Partial<ProductInput> = {}) { return 
 async function editor(id: string) { const result = await readEditor(owner, id, f.runtime); assert.ok(result); return result; }
 async function save(id: string, change: (p: ProductInput) => void = () => {}, action = "save") { const record = await editor(id), input = editable(record); change(input); return saveProduct(owner, id, { product: input, action, revision: record.revision }, f.runtime); }
 const mock = () => { const m = cloudinaryMock(); return { ...m, provider: cloudinaryProvider(mockCloudinaryConfiguration, m.fakeFetch) }; };
+
+test("catalogue validation responses add an actionable field path without committing partial data", async () => {
+  const before = (await f.data.query("SELECT count(*)::int AS n FROM products")).rows[0].n;
+  const headers = new Headers(owner); headers.set("Origin", f.authConfig.baseURL); headers.set("Content-Type", "application/json");
+  const response = await catalogueHttp(new Request(f.authConfig.baseURL + "/api/admin/catalogue/products", { method: "POST", headers,
+    body: JSON.stringify({ product: product("Local HTTP field fixture", { salesMode: "DIRECT_PURCHASE", variants: [variant("LOCAL-HTTP-FIELD-ONE", { priceEGP: "10.01" }), variant("LOCAL-HTTP-FIELD-TWO", { priceEGP: "1.001", configuration: "Other configuration" })] }), action: "save" }) }), ["products"], f.runtime);
+  assert.equal(response.status, 400);
+  const result = await response.json(); assert.equal(result.message, "Enter an EGP price with at most two decimal places, without commas.");
+  assert.deepEqual(result.fieldErrors, { "product.variants.1.priceEGP": result.message });
+  assert.equal((await f.data.query("SELECT count(*)::int AS n FROM products")).rows[0].n, before);
+});
 
 test("all mutation entry points reject unauthenticated requests without data changes", async () => {
   const id = await create("Unauthorised fixture", { variants: [variant("DENIED-1")] });
@@ -56,6 +68,34 @@ test("all three permitted roles manage catalogue; disabled sessions and claimed 
   await assert.rejects(saveProduct(owner, null, { product: { ...product("Claimed fixture"), role: "OWNER" }, action: "save" }, f.runtime), CatalogueAdminError);
 });
 
+test("all category and collection choices remain available beyond five hundred records", async () => {
+  const prefix = "local-choice-" + randomUUID() + "-";
+  const categories = (await f.data.query("INSERT INTO categories(name,slug,display_order) SELECT 'Local category '||i,$1||i,i FROM generate_series(1,501) i RETURNING id,display_order", [prefix])).rows;
+  const collections = (await f.data.query("INSERT INTO collections(name,slug,display_order) SELECT 'Local collection '||i,$1||i,i FROM generate_series(1,501) i RETURNING id,display_order", [prefix])).rows;
+  try {
+    const choices = await catalogueChoices(owner, f.runtime);
+    assert.ok(choices.categories.some((record) => record.id === categories.find((record) => record.display_order === 501).id));
+    assert.ok(choices.collections.some((record) => record.id === collections.find((record) => record.display_order === 501).id));
+  } finally {
+    await f.data.query("DELETE FROM categories WHERE id=ANY($1::uuid[])", [categories.map((record) => record.id)]);
+    await f.data.query("DELETE FROM collections WHERE id=ANY($1::uuid[])", [collections.map((record) => record.id)]);
+  }
+});
+
+test("category choices reflect public visibility through all ancestors", async () => {
+  const prefix = "local-parent-" + randomUUID();
+  const parent = (await f.data.query("INSERT INTO categories(name,slug,is_visible) VALUES('Local hidden ancestor',$1,false) RETURNING id", [prefix])).rows[0].id;
+  const child = (await f.data.query("INSERT INTO categories(name,slug,parent_id,is_visible) VALUES('Local visible child',$1,$2,true) RETURNING id", [prefix + "-child", parent])).rows[0].id;
+  try {
+    assert.equal((await catalogueChoices(owner, f.runtime)).categories.find((record) => record.id === child)!.visible, false);
+    await f.data.query("UPDATE categories SET is_visible=true WHERE id=$1", [parent]);
+    assert.equal((await catalogueChoices(owner, f.runtime)).categories.find((record) => record.id === child)!.visible, true);
+  } finally {
+    await f.data.query("DELETE FROM categories WHERE id=$1", [child]);
+    await f.data.query("DELETE FROM categories WHERE id=$1", [parent]);
+  }
+});
+
 test("creation defaults to draft and assignments use existing category and collection records", async () => {
   const id = await create("Draft fixture", { categoryIds: [developmentId(1)], collectionIds: [developmentId(11)], variants: [variant("DRAFT-1")] });
   const result = await editor(id);
@@ -72,6 +112,24 @@ test("bad values, duplicate SKUs and nonexistent assignments roll back every wri
   await create("SKU original", { variants: [variant("UNIQUE-SKU")] });
   await assert.rejects(create("SKU collision", { variants: [variant("UNIQUE-SKU")] }), { status: 409 });
   assert.equal((await f.data.query("SELECT id FROM products WHERE slug='sku-collision'")).rowCount, 0);
+});
+
+test("parent-side RESTRICT conflicts return 409 and roll back earlier catalogue writes", async () => {
+  const id = await create("Restrict compatibility", { variants: [variant("RESTRICT-COMPAT")] });
+  const before = await editor(id);
+  const version = Number((await f.data.query("SHOW server_version_num")).rows[0].server_version_num);
+  // Obtain the real RESTRICT error using the fixture owner. Runtime DELETE
+  // privileges remain unchanged; inject that driver error after a prior write.
+  const nativeError = await f.data.query("DELETE FROM products WHERE id=$1", [id]).then(
+    () => assert.fail("A referenced product must not be deleted"), (error: unknown) => error,
+  );
+  assert.equal((nativeError as { code: string }).code, version >= 180000 ? "23001" : "23503");
+  assert.equal((nativeError as { constraint: string }).constraint, "product_variants_product_type_fk");
+  await assert.rejects(catalogueTransaction(owner, async (client) => {
+    await client.query("UPDATE products SET name='Must roll back' WHERE id=$1", [id]);
+    throw nativeError;
+  }, f.runtime), { status: 409 });
+  assert.deepEqual(await editor(id), before);
 });
 
 test("variant updates preserve IDs and historical prices; removal is rejected in favour of deactivation", async () => {
@@ -237,7 +295,7 @@ test("audit failure rolls back catalogue writes and private uploads remain unass
   const id = await create("Audit failure"), before = await editor(id), m = mock();
   await f.data.query(`REVOKE INSERT ON audit_events FROM "${f.role}"`);
   try {
-    await assert.rejects(saveProduct(owner, id, { product: { ...editable(before), name: "Must roll back" }, revision: before.revision, action: "save" }, f.runtime), CatalogueAdminError);
+    await assert.rejects(saveProduct(owner, id, { product: { ...editable(before), name: "Must roll back" }, revision: before.revision, action: "save" }, f.runtime), { status: 503 });
     assert.equal((await editor(id)).name, before.name);
     await assert.rejects(uploadPhoto(owner, id, bytes, "image/png", "Fixture audit failure photograph", f.runtime, m.provider));
     assert.equal((await editor(id)).media.length, 0);

@@ -1,0 +1,12 @@
+[
+  {
+    "name": "delete-old-untagged-staging",
+    "action": { "type": "Delete" },
+    "condition": { "tagState": "untagged", "olderThan": "2592000s", "packageNamePrefixes": ["web"] }
+  },
+  {
+    "name": "keep-recent-staging",
+    "action": { "type": "Keep" },
+    "mostRecentVersions": { "packageNamePrefixes": ["web"], "keepCount": 5 }
+  }
+]

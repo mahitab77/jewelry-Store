@@ -18,20 +18,28 @@ export function cloudinaryMock() {
       const asset = [...assets.values()].find((entry) => expectedDelivery(entry.asset) === url.href);
       return asset ? new Response(new Uint8Array(asset.bytes), { headers: { "Content-Type": asset.asset.format === "jpg" ? "image/jpeg" : `image/${asset.asset.format}` } }) : new Response(null, { status: 404 });
     }
-    if (url.hostname !== "api.cloudinary.com" || !url.pathname.startsWith(`/v1_1/${mockCloudinaryConfiguration.cloudName}/image/`)) throw new Error("No live provider calls are permitted in this mock.");
+    const apiPath = `/v1_1/${mockCloudinaryConfiguration.cloudName}/image/`;
+    if (url.hostname !== "api.cloudinary.com" || url.search || ![apiPath + "authenticated", apiPath + "destroy"].includes(url.pathname)) throw new Error("Only authenticated upload and deletion endpoints are permitted in this mock.");
     const request = new Request(url, init);
+    if (request.method !== "POST") throw new Error("Provider mutations must use POST.");
     const authorization = "Basic " + Buffer.from(`${mockCloudinaryConfiguration.apiKey}:${mockCloudinaryConfiguration.apiSecret}`).toString("base64");
     if (request.headers.get("Authorization") !== authorization) return new Response(null, { status: 401 });
     if (url.pathname.endsWith("/destroy")) {
       const form = await request.formData(), publicId = String(form.get("public_id"));
+      if ([...form.keys()].some((key) => !["public_id", "type", "invalidate"].includes(key)) ||
+        ["public_id", "type", "invalidate"].some((key) => form.getAll(key).length !== 1) ||
+        form.get("type") !== "authenticated" || form.get("invalidate") !== "true") throw new Error("Deletion must target authenticated assets and invalidate cached copies.");
       calls.push({ operation: "destroy", publicId });
       if (failures.destroy) return new Response(null, { status: 503 });
       const found = assets.delete(publicId);
       return Response.json({ result: found ? "ok" : "not found" });
     }
+    const form = await request.formData(), file = form.get("file");
+    if ([...form.keys()].some((key) => !["file", "public_id", "overwrite", "unique_filename"].includes(key)) ||
+      ["file", "public_id", "overwrite", "unique_filename"].some((key) => form.getAll(key).length !== 1) ||
+      form.get("overwrite") !== "false" || form.get("unique_filename") !== "false") throw new Error("Uploads must preserve the server-owned identifier without overwriting assets.");
     calls.push({ operation: "upload", publicId: "pending" });
     if (failures.upload) return new Response(null, { status: 503 });
-    const form = await request.formData(), file = form.get("file");
     if (!(file instanceof File)) throw new Error("Expected server-supplied bytes, not a remote URL.");
     const bytes = new Uint8Array(await file.arrayBuffer()), metadata = await sharp(bytes).metadata(), publicId = String(form.get("public_id"));
     const format = metadata.format === "jpeg" ? "jpg" : metadata.format as "png" | "webp";

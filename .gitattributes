@@ -1,0 +1,6 @@
+# Keep release sources consistent across Windows and Linux checkouts/exports.
+* text=auto eol=lf
+
+# These immutable SQL artifacts have approved LF byte checksums.
+db/migrations/*.sql text eol=lf
+infra/neon/*.review.sql text eol=lf

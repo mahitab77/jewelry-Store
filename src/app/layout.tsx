@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, Inter } from "next/font/google";
 import "./globals.css";
+import { siteOrigin } from "../lib/site.ts";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -16,6 +17,7 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
+  alternates: siteOrigin() ? { canonical: siteOrigin()! + "/" } : undefined,
   title: "La Palme d’Or Gems | Bespoke Natural Stone Jewelry",
   description:
     "Bespoke rings, pendants, bracelets, and fine jewelry crafted with natural IGI-certified stones by La Palme d’Or, a jewelry house with over 40 years of heritage in Egypt.",

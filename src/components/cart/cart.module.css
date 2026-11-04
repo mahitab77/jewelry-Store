@@ -3,6 +3,8 @@
 .bag:focus-visible, .root :is(a,button,input):focus-visible { outline: 1px solid var(--gold); outline-offset: 3px; }
 .badge { position: absolute; top: 1px; right: 0; min-width: 17px; padding: 1px 3px; border-radius: 12px; background: var(--gold); color: #090807; font-size: 9px; line-height: 14px; text-align: center; font-weight: 700; }
 .root { padding-block: clamp(3rem,7vw,6rem); }
+.content { display: flow-root; min-height: 42rem; }
+.loading { border-top: 1px solid var(--border); padding-block: 1.5rem; color: var(--beige); font-size: .85rem; line-height: 1.8; }
 .eyebrow { text-transform: uppercase; letter-spacing: .24em; color: var(--gold); font-size: .68rem; margin-bottom: 1rem; }
 .root h1 { font-size: clamp(2.8rem,6vw,4.5rem); color: var(--ivory); line-height: 1.1; }
 .intro { color: var(--beige); font-size: .9rem; line-height: 1.8; max-width: 620px; margin-block: 1.5rem 2.5rem; }
@@ -20,6 +22,9 @@
 .quantity button, .quantity input { width: 44px; height: 44px; background: transparent; color: var(--ivory); border: 0; text-align: center; font: inherit; }
 .quantity input { width: 56px; border-inline: 1px solid var(--border); appearance: textfield; }
 .quantity input::-webkit-inner-spin-button { appearance: none; }
+.quantity input[aria-invalid="true"] { outline: 1px solid var(--gold); outline-offset: -1px; }
+.quantityHint, .quantityError { color: var(--beige); font-size: .75rem; line-height: 1.7; margin-top: .6rem; overflow-wrap: anywhere; }
+.quantityError { color: var(--gold); }
 .quantity button { cursor: pointer; }
 .root button:disabled { opacity: .45; cursor: not-allowed; }
 .remove { min-height: 44px; padding-inline: .5rem; background: transparent; border: 0; color: var(--beige); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; font-size: .8rem; }
@@ -35,4 +40,4 @@
 .empty { border-block: 1px solid var(--border); text-align: center; padding: 3.5rem 1rem; }
 .empty p { margin: 1.5rem auto 2rem; color: var(--beige); line-height: 1.8; max-width: 480px; }
 @media(min-width:1024px) and (max-width:1279px) { .bag { position: relative; right: auto; } }
-@media(max-width:767px) { .layout { grid-template-columns: minmax(0,1fr); } .item { grid-template-columns: 88px minmax(0,1fr); gap: 1rem; } .photo { height: 112px; } .controls { gap: .5rem; } .quantity button { width: 40px; } .quantity input { width: 45px; } .purchase .button { width: 100%; } }
+@media(max-width:767px) { .content { min-height: 58rem; } .layout { grid-template-columns: minmax(0,1fr); } .item { grid-template-columns: 88px minmax(0,1fr); gap: 1rem; } .photo { height: 112px; } .controls { gap: .5rem; } .quantity button { width: 40px; } .quantity input { width: 45px; } .purchase .button { width: 100%; } }

@@ -8,8 +8,11 @@ import type { CatalogueChoices, EditorProduct, EditorVariant, ProductListRow, St
 export async function catalogueChoices(headers: Headers, runtime: AdminRuntime = getAdminRuntime()): Promise<CatalogueChoices> {
   await requirePermission("catalogue:manage", headers, runtime);
   const [categories, collections] = await Promise.all([
-    runtime.pool.query("SELECT id,name,is_visible AS visible FROM categories ORDER BY display_order,name,id LIMIT 500"),
-    runtime.pool.query("SELECT id,name,status FROM collections ORDER BY display_order,name,id LIMIT 500"),
+    runtime.pool.query(`WITH RECURSIVE visible AS (
+      SELECT id FROM categories WHERE parent_id IS NULL AND is_visible
+      UNION ALL SELECT c.id FROM categories c JOIN visible v ON c.parent_id=v.id WHERE c.is_visible)
+      SELECT c.id,c.name,v.id IS NOT NULL AS visible FROM categories c LEFT JOIN visible v ON v.id=c.id ORDER BY c.display_order,c.name,c.id`),
+    runtime.pool.query("SELECT id,name,status FROM collections ORDER BY display_order,name,id"),
   ]);
   return { categories: categories.rows, collections: collections.rows };
 }

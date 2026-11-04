@@ -131,8 +131,8 @@ test("mobile keyboard validation and private delivery remain accessible without 
     await start(context); const page = await context.newPage(), errors: string[] = []; page.on("pageerror", () => errors.push("Runtime error"));
     await page.goto(origin + "/checkout", { waitUntil: "networkidle" });
     await operation(page, "Review details", "review", 422);
-    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("role")), "alert"); await page.keyboard.press("Tab");
-    assert.equal(await page.getByLabel("Full name", { exact: true }).evaluate((input: HTMLElement) => input === document.activeElement), true);
+    await page.waitForFunction(() => document.activeElement?.id === "checkout-fullName");
+    assert.equal(await page.getByLabel("Full name", { exact: true }).getAttribute("aria-invalid"), "true");
     await contact(page); await address(page); await operation(page, "Save draft", "draft");
     await page.getByRole("region", { name: "Review-ready checkout", exact: true }).waitFor(); await healthy(page);
     assert.equal(await page.getByRole("radio", { name: "Boutique Collection", exact: true }).isDisabled(), true);

@@ -13,7 +13,7 @@ export default async function AdminPage() {
     <section className={styles.plans} aria-labelledby="future-areas"><h2 id="future-areas" className="font-display">A foundation for the work ahead.</h2>
       <p>Your access is active. Manage the catalogue, or review the future areas below.</p>
       <div className={styles.cards}>
-        <article><h3>Catalogue</h3><p>Manage products, photographs, pricing and inventory.</p><Link href="/admin/products">Manage catalogue</Link></article>
+        <article><h3>Catalogue</h3><p>Manage products, photographs, pricing and inventory.</p><Link href="/admin/products">Manage catalogue</Link><p><Link href="/admin/taxonomy">Manage categories and collections</Link></p></article>
         {hasPermission(admin.role,"orders:read")?<article><h3>Orders</h3><p>Review orders, verified payment history and personal fulfillment.</p><Link href="/admin/orders">Manage orders</Link></article>:null}
         <article><h3>Enquiries</h3><p>Future handling of boutique conversations.</p><span>Not yet available</span></article>
       </div>

@@ -1,0 +1,10 @@
+{
+  "projectId": "REPLACE_PROJECT_ID",
+  "projectNumber": "REPLACE_NUMERIC_PROJECT_NUMBER",
+  "region": "REPLACE_REGION",
+  "service": "lapalme-staging",
+  "runtimeServiceAccount": "lapalme-staging-runtime@REPLACE_PROJECT_ID.iam.gserviceaccount.com",
+  "image": "REPLACE_REGION-docker.pkg.dev/REPLACE_PROJECT_ID/lapalme-staging/web@sha256:REPLACE_64_HEX_DIGEST",
+  "origin": "",
+  "secrets": {}
+}

@@ -45,7 +45,11 @@ test("migration preserves legacy identities and audit records; all applied check
   const row = (await fixture.data.query("SELECT display_name, role, is_active, auth_provider, email FROM admin_users WHERE id=$1", [legacyId])).rows[0];
   assert.deepEqual(row, { display_name: "Legacy fixture", role: "MANAGER", is_active: false, auth_provider: null, email: null });
   assert.equal((await fixture.data.query("SELECT id FROM audit_events WHERE id=$1", [auditId])).rowCount, 1);
-  await assert.rejects(fixture.data.query("DELETE FROM admin_users WHERE id=$1", [legacyId]), { code: "23503" });
+  const version = Number((await fixture.data.query("SHOW server_version_num")).rows[0].server_version_num);
+  await assert.rejects(fixture.data.query("DELETE FROM admin_users WHERE id=$1", [legacyId]), {
+    code: version >= 180000 ? "23001" : "23503", constraint: "audit_events_actor_admin_id_fkey",
+  });
+  assert.equal((await fixture.data.query("SELECT id FROM admin_users WHERE id=$1", [legacyId])).rowCount, 1);
   const ledger = (await fixture.data.query("SELECT checksum_sha256 FROM schema_migrations")).rows;
   assert.equal(ledger.length, 12); assert.ok(ledger.every((row) => /^[a-f0-9]{64}$/.test(row.checksum_sha256)));
 });

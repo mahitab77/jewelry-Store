@@ -6,7 +6,7 @@ import { consume,throttleCart } from '../cart/repository.ts';
 import { verifyCallback } from './paymob.ts';
 import { processVerifiedEvent } from './lifecycle.ts';
 import { initiatePayment,retryPayment } from './service.ts';
-import { readOrder } from './orders.ts';
+import { readOrder,readOrderAccess } from './orders.ts';
 import { paymentsAvailable } from './config.ts';
 import { PaymentError } from './types.ts';
 
@@ -52,6 +52,9 @@ export async function orderHttp(request:Request,path:string[]):Promise<Response>
     const token=readToken(request.headers).token;if(!token)return paymentJson({message:'This order is unavailable.'},404);
     if(request.method==='GET' && path.length===1){
       await throttleCart(true);const order=await readOrder(token,reference);return order?paymentJson({order,paymentsAvailable:paymentsAvailable()}):paymentJson({message:'This order is unavailable.'},404);
+    }
+    if(request.method==='GET' && path.length===2 && path[1]==='access'){
+      await throttleCart(true);const access=await readOrderAccess(token,reference);return access?paymentJson(access):paymentJson({message:'This order is unavailable.'},404);
     }
     if(request.method!=='POST' || path.length!==2 || path[1]!=='payment')return paymentJson({message:'Unsupported order operation.'},405);
     if(request.headers.get('origin')!==cartOrigin().origin)throw new PaymentError('This payment request could not be verified.',403);

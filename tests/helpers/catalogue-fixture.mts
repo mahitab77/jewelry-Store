@@ -6,17 +6,21 @@ import type { AdminRole } from "../../src/lib/admin/policy.ts";
 import type { EditorProduct, ProductInput, VariantInput } from "../../src/lib/admin/catalogue/types.ts";
 import assert from "node:assert/strict";
 
-export async function catalogueFixture(baseURL?: string) {
+export async function catalogueFixture(baseURL?: string, seeded = true) {
   const fixture = await adminFixture(baseURL);
   try {
     const role = `"${fixture.role}"`;
     await fixture.data.query(`GRANT SELECT ON categories,collections TO ${role}`);
+    await fixture.data.query(`GRANT INSERT(id,name,slug,description,parent_id,display_order,is_visible) ON categories TO ${role}`);
+    await fixture.data.query(`GRANT UPDATE(name,slug,description,parent_id,display_order,is_visible,updated_at) ON categories TO ${role}`);
+    await fixture.data.query(`GRANT INSERT(id,name,slug,description,display_order,status,published_at) ON collections TO ${role}`);
+    await fixture.data.query(`GRANT UPDATE(name,slug,description,display_order,status,published_at,updated_at) ON collections TO ${role}`);
     await fixture.data.query(`GRANT SELECT,INSERT,UPDATE ON products,product_variants,product_prices,inventory TO ${role}`);
     await fixture.data.query(`GRANT SELECT,INSERT ON gemstones TO ${role}`);
     await fixture.data.query(`GRANT SELECT,INSERT,UPDATE,DELETE ON product_categories,product_collections,product_gemstones,product_media TO ${role}`);
     await fixture.data.query(`GRANT SELECT,INSERT,UPDATE ON catalogue_media_jobs TO ${role}`);
     await fixture.data.query(`GRANT SELECT ON audit_events TO ${role}`);
-    await seedDevelopment(fixture.ownerUrl, true);
+    if (seeded) await seedDevelopment(fixture.ownerUrl, true);
     return { ...fixture, async headers(role: AdminRole = "OWNER") {
       const response = await handleAdminAuth(new Request(fixture.authConfig.baseURL + "/api/admin-auth/sign-in/email", { method: "POST", headers: { Origin: fixture.authConfig.baseURL, "Content-Type": "application/json" }, body: JSON.stringify({ email: fixture.users[role].email, password: fixture.password }) }), fixture.runtime);
       assert.equal(response.status, 200, "A disposable administrator should sign in.");

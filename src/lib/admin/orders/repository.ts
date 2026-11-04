@@ -35,7 +35,7 @@ async function transaction<T>(headers:Headers,permission:AdminPermission,operati
     if(!row||!isAdminRole(row.role)||!hasPermission(row.role,permission)||!hasPermission(row.role,'orders:view_payment_exceptions'))throw new AdminAccessError(403);
     const result=await operation(client,admin.id);await client.query('COMMIT');return result;
   }catch(error){await client.query('ROLLBACK');if(error instanceof OrderAdminError||error instanceof AdminAccessError)throw error;
-    if(['23505','23503','23514','40001','40P01'].includes((error as {code?:string}).code??''))fail('The order changed or a referenced record is unavailable. Reload before retrying.',409);
+    if(['23505','23503','23001','23514','40001','40P01'].includes((error as {code?:string}).code??''))fail('The order changed or a referenced record is unavailable. Reload before retrying.',409);
     fail('The order operation could not be completed. No partial changes were committed.',503);
   }finally{client.release();}
 }

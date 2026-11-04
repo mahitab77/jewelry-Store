@@ -1,0 +1,21 @@
+# Only application build inputs enter the Docker context.
+**
+!package.json
+!package-lock.json
+!next.config.ts
+!tsconfig.json
+!postcss.config.mjs
+!src/
+!src/**
+!public/
+!public/**
+# Also reject secret files placed inside an allowed source/asset directory.
+**/.env*
+**/*.pem
+**/*.key
+**/.pg-secure
+**/.pg-secure/**
+**/*.dpapi
+**/*.pgpass
+**/*.pfx
+**/*.p12

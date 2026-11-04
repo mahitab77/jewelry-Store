@@ -1,3 +1,5 @@
+.root { min-width: 0; max-width: 100%; }
+.root :is(form,fieldset) { min-inline-size: 0; max-inline-size: 100%; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem; }
 .toolbar a, .actions a { text-decoration: underline; text-underline-offset: 4px; }
 .filters, .grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1.2rem; }
@@ -9,7 +11,7 @@
 .panel { border: 1px solid var(--border); padding: clamp(1rem,3vw,2rem); margin-block: 1.5rem; min-width: 0; }
 .panel h2, .panel legend { font-family: var(--font-cormorant),Georgia,serif; font-size: 2rem; line-height: 1.2; margin-bottom: 1.3rem; color: var(--ivory); }
 .panel legend { padding-inline: .5rem; }
-.panel h3 { font-family: var(--font-cormorant),Georgia,serif; font-size: 1.7rem; margin-block: 1rem; }
+.panel h3 { font-family: var(--font-cormorant),Georgia,serif; font-size: 1.7rem; margin-block: 1rem; overflow-wrap: anywhere; }
 .panel > p, .help { margin-block: 1rem; color: var(--beige); font-size: .85rem; line-height: 1.8; }
 .panel > .field { margin-top: 1.2rem; }
 .panel fieldset > .button { margin-top: 1rem; }
@@ -17,9 +19,12 @@
 .check { display: inline-flex; align-items: center; gap: .65rem; min-height: 44px; font-size: .85rem; }
 .check input { width: 18px; height: 18px; accent-color: var(--gold); }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-block: 1.5rem; }
-.button { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: .7rem 1.3rem; font-size: .7rem; font-weight: 700; letter-spacing: .1em; line-height: 1.6; text-transform: uppercase; cursor: pointer; text-align: center; }
+.button { display: inline-flex; align-items: center; justify-content: center; min-width: 0; max-width: 100%; min-height: 46px; padding: .7rem 1.3rem; font-size: .7rem; font-weight: 700; letter-spacing: .1em; line-height: 1.6; text-transform: uppercase; cursor: pointer; text-align: center; white-space: normal; overflow-wrap: anywhere; }
 .button:disabled { opacity: .5; cursor: not-allowed; }
 .notice { border-left: 2px solid var(--gold); padding: 1rem; margin-block: 1.5rem; color: var(--ivory); overflow-wrap: anywhere; }
+.fieldError { color: var(--gold); line-height: 1.6; overflow-wrap: anywhere; }
+.field [aria-invalid="true"] { border-color: var(--gold); }
+.root :is(p,legend,label) { overflow-wrap: anywhere; }
 .tableWrap { overflow-x: auto; border: 1px solid var(--border); }
 .table { border-collapse: collapse; width: 100%; min-width: 1200px; font-size: .78rem; }
 .table :is(th,td) { text-align: left; padding: 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }

@@ -14,7 +14,7 @@ export default function BespokePage() {
       <p>Every commission begins with a conversation. Meet a designer, shape your idea, refine the details, choose your stones, and watch your piece come to life.</p>
     </EditorialHero>
     <div className="lp-transition lp-transition-black-to-cream" aria-hidden="true" />
-    <BespokeProcessCarousel />
+    <BespokeProcessCarousel appointmentHref="/appointment" />
     <div className="lp-transition lp-transition-cream-to-black" aria-hidden="true" />
     <EditorialSection eyebrow="Atelier craft" title="Considered from the first line.">
       <div className={styles.split}><div><p>A pendant with personal meaning. A ring defined by colour and proportion. Earrings balanced for light and movement. The starting point belongs to you.</p>

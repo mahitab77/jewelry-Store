@@ -8,12 +8,13 @@ import styles from "./catalogue.module.css";
 
 export function JewelryGallery({ media, name }: { media: PublicMedia[]; name: string }) {
   const photos = media.filter((item) => publicImageSource(item));
-  const [index, setIndex] = useState(0);
+  const primaryIndex = Math.max(0, photos.findIndex((item) => item.isPrimary));
+  const [index, setIndex] = useState(primaryIndex);
   const selected = photos[index];
   const source = selected ? publicImageSource(selected) : null;
   return <section aria-label="Jewelry photographs" className={styles.gallery}>
     <div className={`royal-frame ${styles.galleryStage}`}>
-      {source ? <Image key={selected.id} src={source} alt={selected.altText?.trim() || `${name}, photograph ${index + 1}`} fill preload={index === 0}
+      {source ? <Image key={selected.id} src={source} alt={selected.altText?.trim() || `${name}, photograph ${index + 1}`} fill preload={index === primaryIndex}
         sizes="(max-width: 899px) 92vw, 650px" className={styles.jewelImage} />
         : <div className={styles.imagePlaceholder}><p className="font-display">A private view.</p><p>Photography is available by contacting the boutique.</p></div>}
     </div>

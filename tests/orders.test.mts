@@ -54,6 +54,20 @@ test('exception acknowledgment is an internal observation with responsible staff
 test('acknowledging an exception does not change any financial or inventory record',async()=>{const a=await fixtureOrder(f);await f.data.query("UPDATE orders SET reconciliation_required=true,reconciliation_reason='INVENTORY_MISMATCH' WHERE id=$1",[a.id]);const before=await financial(a.id);await operation(a.id,'acknowledge',{notes:'Review observation'});assert.deepEqual(await financial(a.id),before);assert.equal((await read(a.id)).exception,true);});
 test('audit events contain references and stage changes without personal notes or recipient names',async()=>{const a=await progressed();await handover(a.id);const o=await read(a.id);assert.equal(o.audit.length,6);assert.ok(o.audit.some(a=>a.action==='ORDER_HANDOVER_COMPLETED'));const audit=JSON.stringify(o.audit);assert.ok(!audit.includes('Synthetic recipient'));assert.ok(!audit.includes('Fixture handover observation'));});
 test('an audit insertion failure rolls back arrangement, event, revision and stage',async()=>{const a=await fixtureOrder(f),before=await read(a.id);await f.data.query(`REVOKE INSERT ON audit_events FROM "${f.role}"`);try{assert.equal((await operation(a.id,'prepare')).status,503);}finally{await f.data.query(`GRANT INSERT ON audit_events TO "${f.role}"`);}const after=await read(a.id);assert.equal(after.revision,before.revision);assert.equal(after.arrangements.length,0);assert.equal(after.events.length,0);assert.equal(after.fulfillmentStatus,'UNARRANGED');});
+test('foreign-key conflict codes return 409 with full rollback; unrelated errors remain 503',async()=>{
+  const a=await fixtureOrder(f),before=await read(a.id);
+  // Inject backend errors at the final audit write, after operational writes.
+  await f.data.query(`CREATE FUNCTION public.compatibility_conflict_fixture() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN RAISE EXCEPTION 'Synthetic database rejection' USING ERRCODE = TG_ARGV[0]; END $$`);
+  try{
+    for(const[code,status]of [['23503',409],['23001',409],['XX000',503]] as const){
+      await f.data.query(`CREATE TRIGGER compatibility_conflict_fixture BEFORE INSERT ON audit_events
+        FOR EACH ROW EXECUTE FUNCTION public.compatibility_conflict_fixture('${code}')`);
+      try{assert.equal((await operation(a.id,'prepare')).status,status);assert.deepEqual(await read(a.id),before);}
+      finally{await f.data.query('DROP TRIGGER compatibility_conflict_fixture ON audit_events');}
+    }
+  }finally{await f.data.query('DROP FUNCTION public.compatibility_conflict_fixture()');}
+});
 test('customer order status remains private to the owning guest session',async()=>{const a=await fixtureOrder(f),b=await fixtureOrder(f);assert.equal((await a.customer()).status,200);assert.equal((await a.customer(b.session)).status,404);assert.equal((await a.customer('')).status,404);});
 test('customer projection exposes fulfillment stage without staff, observations or diagnostics',async()=>{const a=await progressed();await operation(a.id,'note',{notes:'PRIVATE operational observation'});const c=await a.customer();assert.equal(c.body.order.fulfillmentStatus,'IN_PROGRESS');const serialized=JSON.stringify(c.body);for(const secret of ['PRIVATE operational observation','Fixture OWNER','Fixture ADMIN','actorAdmin','audit','reconciliationReason'])assert.ok(!serialized.includes(secret));});
 test('every fulfillment operation leaves purchased inventory and payment amounts unchanged',async()=>{const a=await fixtureOrder(f),before=await financial(a.id);await operation(a.id,'prepare');await operation(a.id,'contact');await operation(a.id,'propose',schedule());await operation(a.id,'confirm',{confirmed:true,assignedAdminId:f.users.ADMIN.id});await operation(a.id,'dispatch');await handover(a.id);assert.deepEqual(await financial(a.id),before);});

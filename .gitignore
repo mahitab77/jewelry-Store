@@ -23,6 +23,12 @@
 # misc
 .DS_Store
 *.pem
+*.key
+*.pfx
+*.p12
+*.pgpass
+*.dpapi
+.pg-secure/
 
 # local Windows shortcuts in the repository root
 /*.lnk

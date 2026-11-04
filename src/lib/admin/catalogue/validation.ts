@@ -2,9 +2,17 @@ import type { ProductInput, ProductSubmission, StoneInput, VariantInput } from "
 
 export class CatalogueAdminError extends Error {
   readonly status: number;
-  constructor(message: string, status = 400) { super(message); this.name = "CatalogueAdminError"; this.status = status; }
+  readonly fieldPath?: string;
+  constructor(message: string, status = 400, fieldPath?: string) { super(message); this.name = "CatalogueAdminError"; this.status = status; this.fieldPath = fieldPath; }
 }
 export function fail(message: string, status = 400): never { throw new CatalogueAdminError(message, status); }
+function field<T>(path: string, read: () => T): T {
+  try { return read(); }
+  catch (error) {
+    if (error instanceof CatalogueAdminError && error.status === 400) throw new CatalogueAdminError(error.message, error.status, path + (error.fieldPath ? "." + error.fieldPath : ""));
+    throw error;
+  }
+}
 export function uuid(value: unknown): string {
   if (typeof value !== "string" || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value)) fail("Invalid record identifier.");
   return value as string;
@@ -58,33 +66,31 @@ function stone(value: unknown): StoneInput {
   const result: StoneInput = {
     associationId: s.associationId === undefined ? undefined : uuid(s.associationId),
     kind: choice(s.kind, ["INDIVIDUAL", "GROUP"], "gemstone kind"),
-    type: text(s.type, "Stone type", 100, true), variety: text(s.variety, "Variety"), shape: text(s.shape, "Shape", 100, true), color: text(s.color, "Colour", 100, true),
-    caratWeight: weight(s.caratWeight), origin: text(s.origin, "Origin"), treatment: text(s.treatment, "Treatment information", 1000),
-    laboratory: text(s.laboratory, "Laboratory"), reportReference: text(s.reportReference, "Report reference", 250),
-    role: choice(s.role, ["CENTER", "ACCENT", "OTHER"], "gemstone role"), quantity: integer(s.quantity, "Gemstone quantity", 1),
-    totalCaratWeight: weight(s.totalCaratWeight), displayOrder: integer(s.displayOrder, "Gemstone display order"),
+    type: field("type", () => text(s.type, "Stone type", 100, true)), variety: field("variety", () => text(s.variety, "Variety")), shape: field("shape", () => text(s.shape, "Shape", 100, true)), color: field("color", () => text(s.color, "Colour", 100, true)),
+    caratWeight: field("caratWeight", () => weight(s.caratWeight)), origin: field("origin", () => text(s.origin, "Origin")), treatment: field("treatment", () => text(s.treatment, "Treatment information", 1000)),
+    laboratory: field("laboratory", () => text(s.laboratory, "Laboratory")), reportReference: field("reportReference", () => text(s.reportReference, "Report reference", 250)),
+    role: choice(s.role, ["CENTER", "ACCENT", "OTHER"], "gemstone role"), quantity: field("quantity", () => integer(s.quantity, "Gemstone quantity", 1)),
+    totalCaratWeight: field("totalCaratWeight", () => weight(s.totalCaratWeight)), displayOrder: field("displayOrder", () => integer(s.displayOrder, "Gemstone display order")),
   };
-  if (result.kind === "INDIVIDUAL" && result.quantity !== 1) fail("An individual gemstone must have quantity one.");
-  if (result.reportReference && !result.laboratory) fail("Provide a laboratory with a report reference.");
+  if (result.kind === "INDIVIDUAL" && result.quantity !== 1) field("quantity", () => fail("An individual gemstone must have quantity one."));
+  if (result.reportReference && !result.laboratory) field("laboratory", () => fail("Provide a laboratory with a report reference."));
   return result;
 }
 const variantKeys = ["id", "sku", "size", "configuration", "metalType", "metalPurity", "metalColor", "active", "displayOrder", "priceEGP", "initialStock", "stockReason", "gemstones"];
 function variant(value: unknown): VariantInput {
   const v = object(value, variantKeys);
-  const sku = text(v.sku, "SKU", 80, true);
-  if (!/^[A-Z0-9][A-Z0-9._-]*$/.test(sku)) fail("SKU must use uppercase letters, numbers, dots, underscores or hyphens.");
+  const sku = field("sku", () => { const value = text(v.sku, "SKU", 80, true); if (!/^[A-Z0-9][A-Z0-9._-]*$/.test(value)) fail("SKU must use uppercase letters, numbers, dots, underscores or hyphens."); return value; });
   if (typeof v.active !== "boolean") fail("Choose the variant active state.");
   const result: VariantInput = {
-    id: v.id === undefined ? undefined : uuid(v.id), sku, size: text(v.size, "Size", 100), configuration: text(v.configuration, "Configuration", 250),
-    metalType: text(v.metalType, "Metal"), metalPurity: text(v.metalPurity, "Metal purity"), metalColor: text(v.metalColor, "Metal colour"),
-    active: v.active as boolean, displayOrder: integer(v.displayOrder, "Variant display order"), priceEGP: text(v.priceEGP, "Price", 24),
-    gemstones: array(v.gemstones, "Gemstones", 20).map(stone),
+    id: v.id === undefined ? undefined : uuid(v.id), sku, size: field("size", () => text(v.size, "Size", 100)), configuration: field("configuration", () => text(v.configuration, "Configuration", 250)),
+    metalType: field("metalType", () => text(v.metalType, "Metal")), metalPurity: field("metalPurity", () => text(v.metalPurity, "Metal purity")), metalColor: field("metalColor", () => text(v.metalColor, "Metal colour")),
+    active: v.active as boolean, displayOrder: field("displayOrder", () => integer(v.displayOrder, "Variant display order")), priceEGP: field("priceEGP", () => { const value = text(v.priceEGP, "Price", 24); egpToMinor(value); return value; }),
+    gemstones: field("gemstones", () => array(v.gemstones, "Gemstones", 20).map((value, index) => field(String(index), () => stone(value)))),
   };
-  egpToMinor(result.priceEGP);
   if (result.id && (v.initialStock !== undefined || v.stockReason !== undefined)) fail("Use the separate inventory adjustment to change existing stock.");
   if (!result.id) {
-    result.initialStock = integer(v.initialStock ?? 0, "Initial stock", 0, 1000000);
-    result.stockReason = text(v.stockReason ?? "", "Initial stock reason", 240, result.initialStock > 0);
+    result.initialStock = field("initialStock", () => integer(v.initialStock ?? 0, "Initial stock", 0, 1000000));
+    result.stockReason = field("stockReason", () => text(v.stockReason ?? "", "Initial stock reason", 240, result.initialStock! > 0));
   }
   return result;
 }
@@ -93,23 +99,24 @@ export function parseSubmission(value: unknown): ProductSubmission {
   const p = object(root.product, ["name", "slug", "description", "productType", "salesMode", "categoryIds", "collectionIds", "variants"]);
   const ids = (value: unknown, name: string) => { const list = array(value, name, 30).map(uuid); if (new Set(list).size !== list.length) fail(`Duplicate ${name}.`); return list; };
   const product: ProductInput = {
-    name: text(p.name, "Product name", 200, true), slug: text(p.slug, "Slug", 160, true), description: text(p.description, "Description", 10000),
+    name: field("product.name", () => text(p.name, "Product name", 200, true)), slug: field("product.slug", () => text(p.slug, "Slug", 160, true)), description: field("product.description", () => text(p.description, "Description", 10000)),
     productType: choice(p.productType, ["ONE_OF_A_KIND", "REPEATABLE", "BESPOKE"], "product type"),
     salesMode: choice(p.salesMode, ["DIRECT_PURCHASE", "ENQUIRY_ONLY", "BOTH"], "sales mode"),
-    categoryIds: ids(p.categoryIds, "categories"), collectionIds: ids(p.collectionIds, "collections"), variants: array(p.variants, "Variants", 30).map(variant),
+    categoryIds: ids(p.categoryIds, "categories"), collectionIds: ids(p.collectionIds, "collections"), variants: field("product.variants", () => array(p.variants, "Variants", 30).map((value, index) => field(String(index), () => variant(value)))),
   };
-  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(product.slug)) fail("Use a lowercase, hyphenated URL slug.");
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(product.slug)) field("product.slug", () => fail("Use a lowercase, hyphenated URL slug."));
   if (product.productType === "BESPOKE" && product.salesMode !== "ENQUIRY_ONLY") fail("Bespoke products must be enquiry only.");
   if (product.productType === "ONE_OF_A_KIND" && product.variants.length > 1) fail("A one-of-a-kind jewel has one inventory-owning variant.");
   const skus = new Set<string>(), configurations = new Set<string>(), variants = new Set<string>();
-  for (const v of product.variants) {
-    if (skus.has(v.sku) || (v.id && variants.has(v.id))) fail("Variants and SKUs must be unique.");
+  for (const [index, v] of product.variants.entries()) {
+    const path = "product.variants." + index + ".";
+    if (skus.has(v.sku) || (v.id && variants.has(v.id))) field(path + "sku", () => fail("Variants and SKUs must be unique."));
     skus.add(v.sku); if (v.id) variants.add(v.id);
-    if (product.salesMode === "ENQUIRY_ONLY" && v.priceEGP) fail("Clear selling prices for enquiry-only products.");
-    if (product.productType === "BESPOKE" && (v.initialStock ?? 0) !== 0) fail("Bespoke stock must be zero.");
-    if (product.productType === "ONE_OF_A_KIND" && (v.initialStock ?? 0) > 1) fail("One-of-a-kind stock cannot exceed one.");
+    if (product.salesMode === "ENQUIRY_ONLY" && v.priceEGP) field(path + "priceEGP", () => fail("Clear selling prices for enquiry-only products."));
+    if (product.productType === "BESPOKE" && (v.initialStock ?? 0) !== 0) field(path + "initialStock", () => fail("Bespoke stock must be zero."));
+    if (product.productType === "ONE_OF_A_KIND" && (v.initialStock ?? 0) > 1) field(path + "initialStock", () => fail("One-of-a-kind stock cannot exceed one."));
     const key = JSON.stringify([v.size, v.configuration, v.metalType, v.metalPurity, v.metalColor].map((s) => s.toLowerCase()));
-    if (v.active && configurations.has(key)) fail("Active variants need distinct size, metal or configuration details.");
+    if (v.active && configurations.has(key)) field(path + "configuration", () => fail("Active variants need distinct size, metal or configuration details."));
     if (v.active) configurations.add(key);
   }
   const action = choice(root.action, ["save", "publish", "unpublish", "archive"], "product action");
