@@ -13,6 +13,7 @@ export interface PublicGemstone {
 export interface PublicVariant {
   id: string; sku: string; size: string | null; configuration: string | null;
   metalType: string | null; metalPurity: string | null; metalColor: string | null;
+  metalWeightGrams?: string | null; metalWeightBasis?: "ACTUAL" | "ESTIMATED" | null;
   price: PublicPrice | null;
   availability: "IN_STOCK" | "OUT_OF_STOCK" | "NOT_TRACKED" | "ENQUIRY_ONLY";
   canPurchase: boolean;

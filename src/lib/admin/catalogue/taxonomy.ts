@@ -5,6 +5,7 @@ import { getAdminRuntime, type AdminRuntime } from "../runtime.ts";
 import { catalogueTransaction, revisionColumn } from "./transaction.ts";
 import { fail, integer, object, text, uuid } from "./validation.ts";
 import type { TaxonomyInput, TaxonomyState } from "./taxonomy-types.ts";
+import { automaticSlug, lockAutomaticValues } from "./automatic-values.ts";
 
 export async function readTaxonomy(headers: Headers, runtime: AdminRuntime = getAdminRuntime()): Promise<TaxonomyState> {
   await requirePermission("catalogue:manage", headers, runtime);
@@ -25,15 +26,17 @@ function submission(value: unknown): TaxonomyInput {
   const id = input.id === undefined ? undefined : uuid(input.id);
   const revision = input.revision === undefined ? undefined : text(input.revision, "Editor version", 40, true);
   if ((id && !revision) || (!id && revision) || (revision && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(revision))) fail("Reload this category or collection before saving.");
-  const fields = { id, revision, name: text(input.name, "Name", 200, true), slug: text(input.slug, "URL slug", 160, true), description: text(input.description, "Description", 10000), displayOrder: integer(input.displayOrder, "Display order") };
-  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(fields.slug)) fail("Use a lowercase, hyphenated URL slug.");
+  const fields = { id, revision, name: text(input.name, "Name", 200, true), slug: text(input.slug === undefined ? "" : input.slug, "URL slug", 160), description: text(input.description === undefined && !id ? "" : input.description, "Description", 10000), displayOrder: integer(input.displayOrder === undefined && !id ? 0 : input.displayOrder, "Display order") };
+  if (fields.slug && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(fields.slug)) fail("Use a lowercase, hyphenated URL slug.");
   if (base.kind === "category") {
-    if (typeof input.visible !== "boolean") fail("Choose category visibility.");
-    const parentId = input.parentId === null ? null : uuid(input.parentId);
-    return { ...fields, kind: "category", parentId, visible: input.visible };
+    const visible = input.visible === undefined && !id ? true : input.visible;
+    if (typeof visible !== "boolean") fail("Choose category visibility.");
+    const parentId = input.parentId === null || (!id && input.parentId === undefined) ? null : uuid(input.parentId);
+    return { ...fields, kind: "category", parentId, visible };
   }
-  if (input.status !== "DRAFT" && input.status !== "PUBLISHED" && input.status !== "ARCHIVED") fail("Choose a collection status.");
-  return { ...fields, kind: "collection", status: input.status };
+  const status = input.status === undefined && !id ? "DRAFT" : input.status;
+  if (status !== "DRAFT" && status !== "PUBLISHED" && status !== "ARCHIVED") fail("Choose a collection status.");
+  return { ...fields, kind: "collection", status };
 }
 
 export async function saveTaxonomy(headers: Headers, value: unknown, runtime: AdminRuntime = getAdminRuntime()): Promise<string> {
@@ -41,10 +44,12 @@ export async function saveTaxonomy(headers: Headers, value: unknown, runtime: Ad
     const input = submission(value), id = input.id ?? randomUUID();
     // Serialize parent edits so two concurrent reparentings cannot create a cycle.
     await client.query("SELECT pg_advisory_xact_lock(1781642321,2)");
+    await lockAutomaticValues(client);
     const table = input.kind === "category" ? "categories" : "collections";
     const old = input.id ? (await client.query(`SELECT *,${revisionColumn} AS revision FROM ${table} WHERE id=$1 FOR UPDATE`, [id])).rows[0] : null;
     if (input.id && !old) fail("Category or collection not found.", 404);
     if (old && old.revision !== input.revision) fail("This category or collection changed. Reload before saving.", 409);
+    if (!input.slug) input.slug = old?.slug ?? await automaticSlug(client, table, input.name);
     if (old && old.slug !== input.slug && (input.kind === "category" || old.published_at)) fail("This URL is locked. Keep the existing slug.", 409);
     if (input.kind === "category") {
       if (input.parentId) {

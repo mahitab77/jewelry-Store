@@ -1,3 +1,5 @@
+// Exercise retained direct-sales behavior; quotation-only denial has its own suites.
+process.env.COMMERCE_MODE = "DIRECT_SALES";
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { adminBrowserHarness } from "./helpers/admin-browser.mts";
@@ -12,17 +14,17 @@ beforeEach(async () => {
   await f.data.query("UPDATE product_variants SET size_label='54',configuration_label=CASE id WHEN $1 THEN 'Yellow fixture setting' ELSE 'White fixture setting' END,metal_type='Local gold fixture',metal_purity='18K fixture',metal_color=CASE id WHEN $1 THEN 'Yellow' ELSE 'White' END WHERE id=ANY($2::uuid[])", [id(202), [id(202),id(207)]]);
   await f.data.query("UPDATE inventory SET on_hand=CASE variant_id WHEN $1 THEN 25 ELSE 0 END,reserved=0 WHERE variant_id=ANY($2::uuid[])", [id(202), [id(202),id(207)]]);
 });
-test("standalone bespoke CTA reaches appointment while the homepage retains its existing anchor", async () => {
+test("homepage and standalone bespoke CTAs open the shared bespoke request while preserving the homepage section", async () => {
   const c = await browser.newContext({ ignoreHTTPSErrors: true, reducedMotion: "reduce" });
   try {
     const page = await c.newPage(); await page.goto(origin + "/", { waitUntil: "networkidle" });
-    assert.equal(await page.locator("a.bespoke-carousel-cta:visible").getAttribute("href"), "#appointment");
+    assert.equal(await page.locator("a.bespoke-carousel-cta:visible").getAttribute("href"), "/contact?intent=BESPOKE");
     assert.equal(await page.locator("#appointment").count(), 1);
     await page.goto(origin + "/bespoke", { waitUntil: "networkidle" });
-    const cta = page.locator("a.bespoke-carousel-cta:visible"); assert.equal(await cta.getAttribute("href"), "/appointment");
-    await cta.focus(); await page.keyboard.press("Enter"); await page.waitForURL(origin + "/appointment");
-    assert.equal(await page.locator("h1").innerText(), "A conversation, shaped around you.");
-    assert.match(await page.title(), /appointment/i);
+    const cta = page.locator("a.bespoke-carousel-cta:visible"); assert.equal(await cta.getAttribute("href"), "/contact?intent=BESPOKE");
+    await cta.focus(); await page.keyboard.press("Enter"); await page.waitForURL(origin + "/contact?intent=BESPOKE");
+    assert.equal(await page.locator("h1").innerText(), "Speak with the maison.");
+    assert.match(await page.title(), /contact/i); assert.equal(await page.getByLabel("What would you like to do?",{ exact:true }).inputValue(),"BESPOKE");
   } finally { await c.close(); }
 });
 test("mobile Escape restores toggle focus and normal menu links retain their destinations", async () => {
@@ -77,7 +79,9 @@ test("empty catalogue text has sufficient contrast and catalogue enquiries use c
       let parent: Element | null = e, background = ""; while (parent) { background = getComputedStyle(parent).backgroundColor; if (background !== "rgba(0, 0, 0, 0)" && background !== "transparent") break; parent = parent.parentElement; }
       const a = luminance(rgb(getComputedStyle(e).color)), b = luminance(rgb(background)); return (Math.max(a,b) + .05) / (Math.min(a,b) + .05);
     }); assert.ok(ratio >= 4.5, String(ratio));
-    await page.goto(origin + "/jewels/dev-enquiry-pendant", { waitUntil: "networkidle" }); assert.equal(await page.getByRole("link", { name: "Enquire with the boutique", exact: true }).getAttribute("href"), "/contact");
+    await page.goto(origin + "/jewels/dev-enquiry-pendant", { waitUntil: "networkidle" });
+    const destination = new URL((await page.getByRole("link", { name: "Request a Quotation", exact: true }).getAttribute("href"))!,origin);
+    assert.equal(destination.pathname,"/contact"); assert.equal(destination.searchParams.get("intent"),"QUOTATION"); assert.equal(destination.searchParams.get("product"),"dev-enquiry-pendant"); assert.equal(destination.searchParams.get("variant"),id(203));
   } finally { await c.close(); }
 });
 test("browse, select, add, multi-digit quantity and checkout preparation retain server safeguards", async () => {

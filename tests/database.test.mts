@@ -1,3 +1,5 @@
+// Exercise retained direct-sales behavior; quotation-only denial has its own suites.
+process.env.COMMERCE_MODE = "DIRECT_SALES";
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { randomUUID } from "node:crypto";
@@ -82,10 +84,10 @@ after(async () => {
 });
 
 test("fresh migrations apply and verified replay is a no-op", async () => {
-  assert.equal((await runMigrations(ownerUrl)).length, 12);
+  assert.equal((await runMigrations(ownerUrl)).length, 13);
   assert.deepEqual(await runMigrations(ownerUrl), []);
   const ledger = (await data.query("SELECT version, checksum_sha256 FROM schema_migrations ORDER BY version")).rows;
-  assert.equal(ledger.length, 12);
+  assert.equal(ledger.length, 13);
   assert.ok(ledger.every((row) => /^[a-f0-9]{64}$/.test(row.checksum_sha256)));
 });
 
@@ -107,7 +109,7 @@ test("changed, missing, reordered files and inconsistent ledger are rejected", a
     (await readFile(join(changed, "0006_migration_checksums.sql"), "utf8")).replace("SET LOCAL", "-- changed\nSET LOCAL"));
   await assert.rejects(runMigrations(ownerUrl, { directory: changed }), /checksum/);
   const missing = await migrationCopy("missing");
-  await rm(join(missing, "0012_order_fulfillment_administration.sql"));
+  await rm(join(missing, "0013_quotation_requests_specifications.sql"));
   await assert.rejects(runMigrations(ownerUrl, { directory: missing }), /missing/);
   const reordered = await migrationCopy("reordered");
   await rename(join(reordered, "0002_customers_admin_carts.sql"), join(reordered, "0008_customers_admin_carts.sql"));
@@ -119,14 +121,14 @@ test("changed, missing, reordered files and inconsistent ledger are rejected", a
 
 test("failed migration DDL and ledger insertion both roll back", async () => {
   const directory = await migrationCopy("failed");
-  await writeFile(join(directory, "0013_failure_fixture.sql"), `BEGIN;
+  await writeFile(join(directory, "0014_failure_fixture.sql"), `BEGIN;
 CREATE TABLE public.phase02_rollback_fixture(id UUID PRIMARY KEY);
-INSERT INTO public.schema_migrations(version, filename) VALUES ('0013', '0013_failure_fixture.sql');
+INSERT INTO public.schema_migrations(version, filename) VALUES ('0014', '0014_failure_fixture.sql');
 SELECT public.phase02_nonexistent_function();
 COMMIT;\n`);
-  await assert.rejects(runMigrations(ownerUrl, { directory }), /0013 failed and was rolled back/);
+  await assert.rejects(runMigrations(ownerUrl, { directory }), /0014 failed and was rolled back/);
   assert.equal((await data.query("SELECT to_regclass('public.phase02_rollback_fixture') AS relation")).rows[0].relation, null);
-  assert.equal((await data.query("SELECT count(*) FROM schema_migrations")).rows[0].count, "12");
+  assert.equal((await data.query("SELECT count(*) FROM schema_migrations")).rows[0].count, "13");
 });
 
 test("original Phase 01 schema test passes; legacy adoption is explicit and additive", async () => {
@@ -139,7 +141,7 @@ test("original Phase 01 schema test passes; legacy adoption is explicit and addi
     const verification = (await readFile("db/tests/schema-verification.sql", "utf8")).replace(/^\\set[^\n]*\n/m, "");
     await legacy.query(verification);
     await assert.rejects(runMigrations(legacyUrl), /explicit --adopt-existing/);
-    assert.deepEqual(await runMigrations(legacyUrl, { adoptExisting: true }), ["0006_migration_checksums.sql", "0007_admin_authentication.sql", "0008_catalogue_media.sql", "0009_guest_cart.sql", "0010_checkout_drafts.sql", "0011_test_payment_lifecycle.sql", "0012_order_fulfillment_administration.sql"]);
+    assert.deepEqual(await runMigrations(legacyUrl, { adoptExisting: true }), ["0006_migration_checksums.sql", "0007_admin_authentication.sql", "0008_catalogue_media.sql", "0009_guest_cart.sql", "0010_checkout_drafts.sql", "0011_test_payment_lifecycle.sql", "0012_order_fulfillment_administration.sql", "0013_quotation_requests_specifications.sql"]);
     assert.deepEqual(await runMigrations(legacyUrl), []);
   } finally { await legacy.end(); }
 });

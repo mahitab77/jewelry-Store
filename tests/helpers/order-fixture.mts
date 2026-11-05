@@ -8,8 +8,8 @@ import { orderHttp,paymentHttp } from '../../src/lib/payments/http.ts';
 import assert from 'node:assert/strict';
 const mocks=new WeakMap<object,ReturnType<typeof paymobMock>>();
 
-export async function orderFixture(origin='https://orders.boutique.test'){
-  const f=await paymentFixture(origin),role=`"${f.role}"`;
+export async function orderFixture(origin='https://orders.boutique.test', migrationLimit?: number){
+  const f=await paymentFixture(origin,migrationLimit),role=`"${f.role}"`;
   try{
     await f.data.query(`GRANT SELECT(id,order_number,customer_name,customer_email,customer_phone,currency,total_minor,subtotal_minor,discount_minor,tax_minor,
       fulfillment_fee_minor,payment_status,order_status,fulfillment_method,fulfillment_status,created_at,updated_at,test_mode,boutique_location_id,boutique_location_snapshot,

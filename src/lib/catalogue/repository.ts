@@ -1,4 +1,5 @@
 import "server-only";
+import { quotationOnly } from "../commerce-policy.ts";
 import { queryRows, withTransaction } from "../db/client.ts";
 import type {
   ProductListOptions, ProductPage, PublicCategory, PublicCollection, PublicGemstone,
@@ -61,6 +62,7 @@ const productColumns = `p.id, p.slug, p.name, p.description,
   COALESCE((SELECT jsonb_agg(jsonb_build_object(
       'id', v.id, 'sku', v.sku, 'size', v.size_label, 'configuration', v.configuration_label,
       'metalType', v.metal_type, 'metalPurity', v.metal_purity, 'metalColor', v.metal_color,
+      'metalWeightGrams', v.metal_weight_grams::TEXT, 'metalWeightBasis', v.metal_weight_basis,
       'price', CASE WHEN p.product_type <> 'BESPOKE' AND p.sales_mode <> 'ENQUIRY_ONLY' AND price.id IS NOT NULL
           THEN jsonb_build_object('currency', price.currency, 'amountMinor', price.amount_minor::TEXT) ELSE NULL END,
       'availability', CASE WHEN p.product_type = 'BESPOKE' OR p.sales_mode = 'ENQUIRY_ONLY' THEN 'ENQUIRY_ONLY'
@@ -75,6 +77,9 @@ const productColumns = `p.id, p.slug, p.name, p.description,
 
 interface ProductRow extends PublicProduct { variants: PublicVariant[] }
 function summary(row: ProductRow): PublicProduct {
+  if (quotationOnly()) return { id: row.id, slug: row.slug, name: row.name, description: row.description,
+    productType: row.productType, salesMode: "ENQUIRY_ONLY", primaryImage: row.primaryImage,
+    fromPrice: null, pricingMode: "PRICE_ON_REQUEST", canPurchase: false, canEnquire: true };
   const prices = row.variants.flatMap((v) => v.price ? [v.price] : []);
   const fromPrice = prices.reduce<(typeof prices)[number] | null>((lowest, price) =>
     !lowest || BigInt(price.amountMinor) < BigInt(lowest.amountMinor) ? price : lowest, null);
@@ -139,7 +144,7 @@ export async function getPublishedProductBySlug(slug: string): Promise<PublicPro
       JOIN public.product_variants v ON v.id = pg.variant_id WHERE v.product_id = $1 AND v.is_active
       ORDER BY pg.display_order, pg.id`, values)).rows;
     return { ...summary(row), media, categories, collections, variants: row.variants.map((v) => ({
-      ...v, canPurchase: v.canPurchase === true,
+      ...v, ...(quotationOnly() ? { price: null, canPurchase: false, availability: "ENQUIRY_ONLY" as const } : { canPurchase: v.canPurchase === true }),
       gemstones: gemstones.filter((g) => g.variantId === v.id).map((g) => ({
         type: g.type, variety: g.variety, shape: g.shape, color: g.color,
         caratWeight: g.caratWeight, totalCaratWeight: g.totalCaratWeight,

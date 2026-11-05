@@ -7,7 +7,7 @@ import { primaryNavigation } from "@/lib/navigation";
 import styles from "./catalogue.module.css";
 import { CartBag } from "../cart/CartBag";
 
-export function CatalogueHeader() {
+export function CatalogueHeader({ quotationOnly = true }: { quotationOnly?: boolean }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const toggle = useRef<HTMLButtonElement>(null);
@@ -38,13 +38,13 @@ export function CatalogueHeader() {
         {primaryNavigation.map((link) => <Link key={link.href} href={link.href} className="nav-link shrink-0 transition-colors duration-300 hover:text-gold">{link.label}</Link>)}
       </div>
       <div className="relative flex shrink-0 items-center gap-2 sm:gap-3">
-        <CartBag />
+        {!quotationOnly ? <CartBag onNavigate={() => setOpen(false)} /> : null}
         <button ref={toggle} type="button" className={`nav-menu-button lg:hidden ${styles.menuButton}`} aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}>
           <span className="sr-only">{open ? "Close menu" : "Open menu"}</span>
           <span aria-hidden="true" className={styles.menuBar} /><span aria-hidden="true" className={styles.menuBar} /><span aria-hidden="true" className={styles.menuBar} />
         </button>
         <Link href="/appointment" onClick={() => setOpen(false)} className="navbar-cta inline-flex min-h-10 items-center justify-center px-3.5 text-[0.65rem] font-semibold uppercase tracking-[0.14em] sm:min-h-11 sm:px-5 sm:text-xs sm:tracking-[0.18em]">
-          <span className="sm:hidden">Book</span><span className="hidden sm:inline">Book Appointment</span>
+          <span className="sm:hidden">Consult</span><span className="hidden sm:inline">Consult the Designer</span>
         </Link>
       </div>
     </nav>

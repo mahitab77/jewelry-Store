@@ -1,3 +1,5 @@
+// Exercise retained direct-sales behavior; quotation-only denial has its own suites.
+process.env.COMMERCE_MODE = "DIRECT_SALES";
 import assert from "node:assert/strict";
 import { before, beforeEach, test } from "node:test";
 import { randomUUID } from "node:crypto";
@@ -30,6 +32,15 @@ const variants = [
 ];
 const stoneGroup = (parent: Locator, index: number) => parent.getByRole("heading", { name: `Gemstone ${index}`, exact: true }).locator("..");
 const variantGroup = (page: Page, index: number) => page.getByRole("group", { name: `Variant ${index}`, exact: true });
+const variantField = (page: Page, index: number, field: string) => page.locator(`[data-field-path="product.variants.${index - 1}.${field}"]`);
+const materialGroup = (page: Page, index: number) => page.locator("summary").filter({ hasText: "Materials and gemstones" }).locator("..").getByRole("heading", { name: `Configuration ${index}`, exact: true }).locator("..");
+async function reveal(page: Page, name: string) {
+  const summary = page.locator("summary").filter({ hasText: name });
+  if (await summary.locator("..").getAttribute("open") === null) await summary.click();
+}
+async function revealProductDetails(page: Page) {
+  for (const name of ["Materials and gemstones", "Sizes and variants", "Pricing and inventory", "Publication and visibility", "Technical details"]) await reveal(page, name);
+}
 async function operation(page: Page, label: string, suffix: string, expectedStatus = 200) {
   const response = page.waitForResponse((r: { url(): string; request(): { method(): string } }) => r.url() === origin + "/api/admin/catalogue/" + suffix && r.request().method() === "POST");
   await page.getByRole("button", { name: label, exact: true }).click();
@@ -53,19 +64,20 @@ async function compareStone(group: Locator, value: typeof stones[number]) {
   }
   for (const [label, expected] of [["Specification kind", value.kind], ["Gemstone role", value.role], ["Gemstone quantity", value.quantity], ["Gemstone display order", value.displayOrder]]) assert.equal(await group.getByLabel(label, { exact: true }).inputValue(), expected);
 }
-async function fillVariant(group: Locator, value: typeof variants[number]) {
-  for (const [key, label] of Object.entries(variantLabels)) await group.getByLabel(label, { exact: true }).fill(value[key as keyof typeof variantLabels]);
-  await group.getByLabel("Active variant", { exact: true }).setChecked(value.active);
-  await group.getByLabel("Initial stock", { exact: true }).fill(value.initialStock);
-  await group.getByLabel("Initial stock reason", { exact: true }).fill(value.stockReason);
+async function fillVariant(page: Page, index: number, value: typeof variants[number]) {
+  for (const key of Object.keys(variantLabels)) await variantField(page, index, key).fill(value[key as keyof typeof variantLabels]);
+  await variantGroup(page, index).getByLabel("Active variant", { exact: true }).setChecked(value.active);
+  await variantField(page, index, "initialStock").fill(value.initialStock);
+  await variantField(page, index, "stockReason").fill(value.stockReason);
 }
-async function compareVariant(group: Locator, value: typeof variants[number]) {
-  for (const [key, label] of Object.entries(variantLabels)) assert.equal(await group.getByLabel(label, { exact: true }).inputValue(), key === "priceEGP" ? Number(value.priceEGP).toFixed(2) : value[key as keyof typeof variantLabels], `Reload ${label}`);
-  assert.equal(await group.getByLabel("Active variant", { exact: true }).isChecked(), value.active);
+async function compareVariant(page: Page, index: number, value: typeof variants[number]) {
+  for (const [key, label] of Object.entries(variantLabels)) assert.equal(await variantField(page, index, key).inputValue(), key === "priceEGP" ? Number(value.priceEGP).toFixed(2) : value[key as keyof typeof variantLabels], `Reload ${label}`);
+  assert.equal(await variantGroup(page, index).getByLabel("Active variant", { exact: true }).isChecked(), value.active);
 }
 async function createGrouping(page: Page, kind: "category" | "collection", name: string, slug: string, order: string, parent?: string) {
   await page.getByLabel(kind === "category" ? "Choose category" : "Choose collection", { exact: true }).selectOption("");
   const group = page.getByRole("group", { name: `Create ${kind}`, exact: true });
+  if (await group.locator("details").getAttribute("open") === null) await group.locator("summary").click();
   await group.getByLabel("Name", { exact: true }).fill(name); await group.getByLabel("URL slug", { exact: true }).fill(slug);
   await group.getByLabel("Description", { exact: true }).fill("Disposable local taxonomy fixture."); await group.getByLabel("Display order", { exact: true }).fill(order);
   if (kind === "category") { await group.getByLabel("Visible category", { exact: true }).check(); if (parent) await group.getByLabel("Parent category", { exact: true }).selectOption({ label: parent }); }
@@ -77,10 +89,12 @@ async function createGrouping(page: Page, kind: "category" | "collection", name:
   if (kind === "collection") { await saved.getByLabel("Collection status", { exact: true }).selectOption("PUBLISHED"); await operation(page, "Save collection", "taxonomy"); }
 }
 async function upload(page: Page, id: string, alt: string) {
-  await page.getByLabel("Photograph", { exact: true }).setInputFiles({ name: "approved-local-ring.png", mimeType: "image/png", buffer: photo });
-  await page.getByLabel("Photograph description (alt text)", { exact: true }).fill(alt);
-  await operation(page, "Upload photograph", `products/${id}/photos`);
-  assert.equal(await page.getByLabel("Photograph", { exact: true }).inputValue(), "");
+  await page.getByLabel("Add Photographs", { exact: true }).setInputFiles({ name: "approved-local-ring.png", mimeType: "image/png", buffer: photo });
+  await reveal(page, "Photograph description (optional)");
+  await page.getByLabel("Description for selected photograph 1", { exact: true }).fill(alt);
+  await operation(page, "Upload selected photographs", `products/${id}/photos`);
+  await page.getByLabel("Description for selected photograph 1", { exact: true }).waitFor({ state: "detached" });
+  assert.equal(await page.getByLabel("Add Photographs", { exact: true }).inputValue(), "");
 }
 async function editorJson(context: Awaited<ReturnType<typeof browser.newContext>>, id: string): Promise<EditorProduct> {
   const response = await context.request.get(origin + `/api/admin/catalogue/products/${id}`); assert.equal(response.status(), 200); return (await response.json()).product;
@@ -101,13 +115,16 @@ test("empty catalogue manager creates taxonomy and round-trips every editor fiel
     await page.reload(); assert.equal(await page.getByLabel("Choose category", { exact: true }).locator("option").count(), 3); assert.equal(await page.getByLabel("Choose collection", { exact: true }).locator("option").count(), 3);
     await page.getByLabel("Choose category", { exact: true }).selectOption({ label: names.otherCategory });
     const categoryForm = page.getByRole("group", { name: "Edit category", exact: true });
+    await categoryForm.locator("summary").click();
     assert.equal(await categoryForm.getByLabel("Parent category", { exact: true }).locator("option:checked").innerText(), names.category);
     assert.ok(await categoryForm.getByLabel("Visible category", { exact: true }).isChecked());
     await categoryForm.getByLabel("Description", { exact: true }).fill("Updated disposable category description.");
     await operation(page, "Save category", "taxonomy"); await page.reload();
     await page.getByLabel("Choose category", { exact: true }).selectOption({ label: names.otherCategory });
+    await categoryForm.locator("summary").click();
     assert.equal(await page.getByRole("group", { name: "Edit category", exact: true }).getByLabel("Description", { exact: true }).inputValue(), "Updated disposable category description.");
     await page.getByLabel("Choose collection", { exact: true }).selectOption({ label: names.collection + " (published)" });
+    await page.getByRole("group", { name: "Edit collection", exact: true }).locator("summary").click();
     assert.equal(await page.getByRole("group", { name: "Edit collection", exact: true }).getByLabel("Collection status", { exact: true }).inputValue(), "PUBLISHED");
     await screenshot(page, "product-taxonomy-desktop");
     await page.setViewportSize({ width: 390, height: 844 });
@@ -115,20 +132,23 @@ test("empty catalogue manager creates taxonomy and round-trips every editor fiel
     await screenshot(page, "product-taxonomy-mobile");
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(origin + "/admin/products/new");
-    await page.getByLabel("Product name", { exact: true }).fill("Local complete editor fixture"); await page.getByLabel("URL slug", { exact: true }).fill(slugs.product);
+    await revealProductDetails(page);
+    await page.getByLabel("Jewelry Name", { exact: true }).fill("Local complete editor fixture"); await page.getByLabel("URL slug", { exact: true }).fill(slugs.product);
     const description = "Disposable local jewellery fixture only. Not a real product.\nAll specifications below are synthetic test data.";
     await page.getByLabel("Description", { exact: true }).fill(description); await page.getByLabel("Product type", { exact: true }).selectOption("REPEATABLE"); await page.getByLabel("Sales mode", { exact: true }).selectOption("BOTH");
     await page.getByLabel(names.category, { exact: true }).check(); await page.getByLabel(`${names.collection} (published)`, { exact: true }).check();
-    await page.getByRole("button", { name: "Add variant", exact: true }).click(); await fillVariant(variantGroup(page, 1), variants[0]);
-    for (const [index, stone] of stones.entries()) { await variantGroup(page, 1).getByRole("button", { name: "Add gemstone", exact: true }).click(); await fillStone(stoneGroup(variantGroup(page, 1), index + 1), stone); }
-    await page.getByRole("button", { name: "Add variant", exact: true }).click(); await fillVariant(variantGroup(page, 2), variants[1]);
-    await operation(page, "Create draft", "products"); await page.waitForURL(/\/admin\/products\/[0-9a-f-]{36}\/edit$/); const id = page.url().split("/").at(-2)!;
+    // One configuration is already present; add only the second configuration.
+    await page.getByRole("button", { name: "Add variant", exact: true }).click(); await fillVariant(page, 1, variants[0]);
+    for (const [index, stone] of stones.entries()) { await materialGroup(page, 1).getByRole("button", { name: "Add gemstone", exact: true }).click(); await fillStone(stoneGroup(materialGroup(page, 1), index + 1), stone); }
+    await fillVariant(page, 2, variants[1]);
+    await operation(page, "Save Draft", "products"); await page.waitForURL(/\/admin\/products\/[0-9a-f-]{36}\/edit$/); const id = page.url().split("/").at(-2)!;
     await page.reload(); await page.getByRole("heading", { name: "Edit product", exact: true }).waitFor();
-    assert.equal(await page.getByLabel("Product name", { exact: true }).inputValue(), "Local complete editor fixture"); assert.equal(await page.getByLabel("URL slug", { exact: true }).inputValue(), slugs.product);
+    await revealProductDetails(page);
+    assert.equal(await page.getByLabel("Jewelry Name", { exact: true }).inputValue(), "Local complete editor fixture"); assert.equal(await page.getByLabel("URL slug", { exact: true }).inputValue(), slugs.product);
     assert.equal(await page.getByLabel("Description", { exact: true }).inputValue(), description); assert.equal(await page.getByLabel("Product type", { exact: true }).inputValue(), "REPEATABLE"); assert.ok(await page.getByLabel("Product type", { exact: true }).isDisabled()); assert.equal(await page.getByLabel("Sales mode", { exact: true }).inputValue(), "BOTH");
     assert.ok(await page.getByLabel(names.category, { exact: true }).isChecked()); assert.ok(await page.getByLabel(`${names.collection} (published)`, { exact: true }).isChecked());
-    for (const [index, value] of variants.entries()) await compareVariant(variantGroup(page, index + 1), value);
-    for (const [index, value] of stones.entries()) await compareStone(stoneGroup(variantGroup(page, 1), index + 1), value);
+    for (const [index, value] of variants.entries()) await compareVariant(page, index + 1, value);
+    for (const [index, value] of stones.entries()) await compareStone(stoneGroup(materialGroup(page, 1), index + 1), value);
     const persisted = await editorJson(context, id); assert.deepEqual(persisted.variants.map(v => [v.onHand, v.reserved, v.available]), [[3, 0, 3], [0, 0, 0]]);
     const initialAudits = (await fixture.data.query("SELECT metadata FROM audit_events WHERE target_id=$1 AND action='CATALOGUE_INVENTORY_INITIALISED'", [id])).rows;
     assert.deepEqual(initialAudits.map(r => r.metadata.reason).sort(), variants.map(v => v.stockReason).sort());
@@ -137,10 +157,10 @@ test("empty catalogue manager creates taxonomy and round-trips every editor fiel
     await upload(page, id, "Local fixture front reference"); await upload(page, id, "Local fixture detail reference");
     const mediaBefore = (await editorJson(context, id)).media;
     await page.getByLabel("Alt text for photograph 1", { exact: true }).fill("Local approved front reference"); await page.getByLabel("Alt text for photograph 2", { exact: true }).fill("Local approved detail reference"); await page.getByLabel("Primary photograph 2", { exact: true }).check();
-    await operation(page, "Save photograph order", `products/${id}/arrange`); await page.reload();
+    await operation(page, "Save photograph order", `products/${id}/arrange`); await page.reload(); await revealProductDetails(page);
     const mediaAfter = (await editorJson(context, id)).media; assert.deepEqual(mediaAfter.map(m => m.id), mediaBefore.map(m => m.id)); assert.deepEqual(mediaAfter.map(m => m.displayOrder), [0, 1]); assert.equal(mediaAfter[1].primary, true);
     assert.equal(await page.getByLabel("Alt text for photograph 1", { exact: true }).inputValue(), "Local approved front reference"); assert.equal(await page.getByLabel("Alt text for photograph 2", { exact: true }).inputValue(), "Local approved detail reference"); assert.ok(await page.getByLabel("Primary photograph 2", { exact: true }).isChecked());
-    await variantGroup(page, 2).getByLabel("Active variant", { exact: true }).check(); await operation(page, "Save draft", `products/${id}/save`);
+    await variantGroup(page, 2).getByLabel("Active variant", { exact: true }).check(); await operation(page, "Save Draft", `products/${id}/save`);
     await operation(page, "Publish", `products/${id}/save`); assert.equal((await publicPage.goto(origin + `/jewels/${slugs.product}`))!.status(), 200);
     await publicPage.getByRole("heading", { name: "Local complete editor fixture", exact: true }).waitFor(); assert.match(await publicPage.title(), /Local complete editor fixture/);
     await publicPage.waitForFunction((alt: string) => [...document.images].some(image => image.alt === alt && image.complete && image.naturalWidth > 0), "Local approved detail reference");
@@ -151,14 +171,15 @@ test("empty catalogue manager creates taxonomy and round-trips every editor fiel
     const canonicalNode = publicPage.locator('link[rel="canonical"]'); const canonical = await canonicalNode.count() ? await canonicalNode.getAttribute("href") : null; if (canonical) assert.equal(new URL(canonical).pathname, `/jewels/${slugs.product}`);
     await screenshot(publicPage, "product-detail-roundtrip-desktop");
     const editedStone = { ...stones[0], variety: "Local edited variety", caratWeight: "1.5001", treatment: "Local edited disclosure", laboratory: "LOCAL EDIT TEST ONLY", reportReference: "LOCAL-EDIT-NOT-A-CERTIFICATE", totalCaratWeight: "3.0002" };
-    await page.getByLabel("Product name", { exact: true }).fill("Local edited editor fixture"); await page.getByLabel("Description", { exact: true }).fill("Edited disposable product description.");
+    await page.getByLabel("Jewelry Name", { exact: true }).fill("Local edited editor fixture"); await page.getByLabel("Description", { exact: true }).fill("Edited disposable product description.");
     await page.getByLabel(names.category, { exact: true }).uncheck(); await page.getByLabel(names.otherCategory, { exact: true }).check(); await page.getByLabel(`${names.collection} (published)`, { exact: true }).uncheck(); await page.getByLabel(`${names.otherCollection} (published)`, { exact: true }).check();
     const editedVariant = { ...variants[0], size: "55", configuration: "Local edited configuration", metalType: "Local edited metal", metalPurity: "Edited purity", metalColor: "Edited colour", priceEGP: "1400.07" };
-    for (const [key, label] of Object.entries(variantLabels)) await variantGroup(page, 1).getByLabel(label, { exact: true }).fill(editedVariant[key as keyof typeof variantLabels]);
-    await fillStone(stoneGroup(variantGroup(page, 1), 1), editedStone); await operation(page, "Save changes", `products/${id}/save`); await page.reload();
-    assert.equal(await page.getByLabel("Product name", { exact: true }).inputValue(), "Local edited editor fixture"); assert.equal(await page.getByLabel("Description", { exact: true }).inputValue(), "Edited disposable product description."); assert.equal(await page.getByLabel("URL slug", { exact: true }).inputValue(), slugs.product); assert.equal(await page.getByLabel("URL slug", { exact: true }).isEditable(), false);
+    for (const key of Object.keys(variantLabels)) await variantField(page, 1, key).fill(editedVariant[key as keyof typeof variantLabels]);
+    await fillStone(stoneGroup(materialGroup(page, 1), 1), editedStone); await operation(page, "Save changes", `products/${id}/save`); await page.reload(); await revealProductDetails(page);
+    assert.equal(await page.getByLabel("Jewelry Name", { exact: true }).inputValue(), "Local edited editor fixture"); assert.equal(await page.getByLabel("Description", { exact: true }).inputValue(), "Edited disposable product description."); assert.equal(await page.getByLabel("URL slug", { exact: true }).inputValue(), slugs.product); assert.equal(await page.getByLabel("URL slug", { exact: true }).isEditable(), false);
     assert.equal(await page.getByLabel(names.category, { exact: true }).isChecked(), false); assert.ok(await page.getByLabel(names.otherCategory, { exact: true }).isChecked()); assert.equal(await page.getByLabel(`${names.collection} (published)`, { exact: true }).isChecked(), false); assert.ok(await page.getByLabel(`${names.otherCollection} (published)`, { exact: true }).isChecked());
-    await compareVariant(variantGroup(page, 1), editedVariant); await compareStone(stoneGroup(variantGroup(page, 1), 1), editedStone);
+    await compareVariant(page, 1, editedVariant); await compareStone(stoneGroup(materialGroup(page, 1), 1), editedStone);
+    await reveal(page, "Detailed stock adjustments");
     const inventoryForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Apply stock adjustment for LOCAL-MGMT-ONE", exact: true }) });
     await inventoryForm.getByLabel("Adjustment (+/− units)", { exact: true }).fill("-1"); await inventoryForm.getByLabel("Adjustment reason", { exact: true }).fill("Local audited stock correction"); await operation(page, "Apply stock adjustment for LOCAL-MGMT-ONE", `products/${id}/inventory/${persisted.variants[0].id}`);
     assert.equal((await editorJson(context, id)).variants[0].onHand, 2); assert.equal(await inventoryForm.getByLabel("Adjustment reason", { exact: true }).inputValue(), "");
@@ -170,7 +191,7 @@ test("empty catalogue manager creates taxonomy and round-trips every editor fiel
     await publicPage.goto(origin + `/jewels/${slugs.product}`); assert.match(await publicPage.locator("main").innerText(), /1,400\.07/);
     await operation(page, "Unpublish", `products/${id}/save`); assert.equal((await publicPage.goto(origin + `/jewels/${slugs.product}`))!.status(), 404); assert.equal((await context.request.get(origin + `/catalogue-images/${mediaBefore[1].id}`)).status(), 404);
     await page.getByRole("button", { name: "Remove photograph 2", exact: true }).click(); await page.getByRole("status").filter({ hasText: /removed/i }).waitFor(); assert.equal((await editorJson(context, id)).media.length, 1);
-    await variantGroup(page, 1).getByRole("button", { name: "Detach gemstone 2", exact: true }).click(); await operation(page, "Save draft", `products/${id}/save`); assert.equal((await editorJson(context, id)).variants[0].gemstones.length, 1);
+    await materialGroup(page, 1).getByRole("button", { name: "Detach gemstone 2", exact: true }).click(); await operation(page, "Save Draft", `products/${id}/save`); assert.equal((await editorJson(context, id)).variants[0].gemstones.length, 1);
     await operation(page, "Archive", `products/${id}/save`); assert.equal((await editorJson(context, id)).status, "ARCHIVED"); assert.equal((await fixture.data.query("SELECT count(*)::int AS n FROM product_variants WHERE product_id=$1", [id])).rows[0].n, 2);
     assert.equal((await fixture.data.query("SELECT count(*)::int AS n FROM product_prices WHERE variant_id=$1", [persisted.variants[0].id])).rows[0].n, 2);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); assert.equal(await page.locator("nextjs-portal").count(), 0); assert.deepEqual(pageErrors, []); await page.evaluate(() => window.scrollTo(0, 0)); await screenshot(page, "product-editor-roundtrip-desktop");
@@ -184,8 +205,9 @@ test("invalid editor/API operations and unauthorized access cannot partially per
     const categoryResponse = await context.request.post(origin + "/api/admin/catalogue/taxonomy", { headers: { Origin: origin }, data: { kind: "category", name: "Local rollback category", slug: "local-rollback-category", description: "Disposable security fixture.", displayOrder: 10, parentId: null, visible: true } }); assert.equal(categoryResponse.status(), 200); const category = (await categoryResponse.json()).id as string;
     const existingResponse = await context.request.post(origin + "/api/admin/catalogue/products", { headers: { Origin: origin }, data: { product: product("Local existing collision fixture", { categoryIds: [category], variants: [variant("LOCAL-ROLLBACK-EXISTING")] }), action: "save" } }); assert.equal(existingResponse.status(), 200); const existingId = (await existingResponse.json()).id as string;
     await page.goto(origin + "/admin/products/new");
-    await page.getByLabel("Product name", { exact: true }).fill("Local invalid editor fixture"); await page.getByLabel("URL slug", { exact: true }).fill("INVALID SLUG");
-    const before = await persistedCounts(); await page.getByRole("button", { name: "Create draft", exact: true }).click();
+    await reveal(page, "Technical details");
+    await page.getByLabel("Jewelry Name", { exact: true }).fill("Local invalid editor fixture"); await page.getByLabel("URL slug", { exact: true }).fill("INVALID SLUG");
+    const before = await persistedCounts(); await page.getByRole("button", { name: "Save Draft", exact: true }).click();
     await page.waitForFunction(() => Boolean(document.querySelector('main [role="alert"]') || document.querySelector("input:invalid")));
     assert.deepEqual(await persistedCounts(), before);
     const input = product("Local atomic API collision", { categoryIds: [category], salesMode: "DIRECT_PURCHASE", variants: [variant("LOCAL-ATOMIC-FIRST", { priceEGP: "10.01", initialStock: 1, stockReason: "Disposable rollback unit" }), variant("LOCAL-ROLLBACK-EXISTING", { configuration: "Unique input but colliding stored SKU", priceEGP: "20.02" })] });
@@ -211,14 +233,14 @@ test("mobile editor preserves individual one-of-a-kind fields and stock limits w
     const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("dialog", (dialog: { accept(): Promise<void> }) => dialog.accept()); await signIn(page, "CATALOGUE_MANAGER");
     const categoryResponse = await context.request.post(origin + "/api/admin/catalogue/taxonomy", { headers: { Origin: origin }, data: { kind: "category", name: "Local mobile category", slug: "local-mobile-category", description: "Disposable mobile fixture.", displayOrder: 11, parentId: null, visible: true } }); assert.equal(categoryResponse.status(), 200);
     await page.goto(origin + "/admin/products/new");
-    await page.getByLabel("Product name", { exact: true }).fill("Local mobile unique fixture"); await page.getByLabel("URL slug", { exact: true }).fill("local-mobile-unique-fixture"); await page.getByLabel("Description", { exact: true }).fill("Local disposable one-of-a-kind fixture only."); await page.getByLabel("Sales mode", { exact: true }).selectOption("BOTH"); await page.getByLabel("Local mobile category", { exact: true }).check();
-    await page.getByRole("button", { name: "Add variant", exact: true }).click(); const group = variantGroup(page, 1);
-    await fillVariant(group, { ...variants[0], sku: "LOCAL-MOBILE-UNIQUE", priceEGP: "90071992547409.93", initialStock: "1", stockReason: "One disposable unique unit" });
-    await group.getByRole("button", { name: "Add gemstone", exact: true }).click(); const individual = { ...stones[0], kind: "INDIVIDUAL", quantity: "1", totalCaratWeight: "1.25" }; await fillStone(stoneGroup(group, 1), individual);
-    await operation(page, "Create draft", "products"); await page.waitForURL(/\/admin\/products\/[0-9a-f-]{36}\/edit$/); const id = page.url().split("/").at(-2)!; await page.reload();
-    assert.equal(await variantGroup(page, 1).getByLabel("Selling price (EGP)", { exact: true }).inputValue(), "90071992547409.93"); await compareStone(stoneGroup(variantGroup(page, 1), 1), individual); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); await screenshot(page, "product-editor-roundtrip-mobile");
+    await revealProductDetails(page);
+    await page.getByLabel("Jewelry Name", { exact: true }).fill("Local mobile unique fixture"); await page.getByLabel("URL slug", { exact: true }).fill("local-mobile-unique-fixture"); await page.getByLabel("Description", { exact: true }).fill("Local disposable one-of-a-kind fixture only."); await page.getByLabel("Product type", { exact: true }).selectOption("ONE_OF_A_KIND"); await page.getByLabel("Sales mode", { exact: true }).selectOption("BOTH"); await page.getByLabel("Local mobile category", { exact: true }).check();
+    await fillVariant(page, 1, { ...variants[0], sku: "LOCAL-MOBILE-UNIQUE", priceEGP: "90071992547409.93", initialStock: "1", stockReason: "One disposable unique unit" });
+    await materialGroup(page, 1).getByRole("button", { name: "Add gemstone", exact: true }).click(); const individual = { ...stones[0], kind: "INDIVIDUAL", quantity: "1", totalCaratWeight: "1.25" }; await fillStone(stoneGroup(materialGroup(page, 1), 1), individual);
+    await operation(page, "Save Draft", "products"); await page.waitForURL(/\/admin\/products\/[0-9a-f-]{36}\/edit$/); const id = page.url().split("/").at(-2)!; await page.reload(); await revealProductDetails(page);
+    assert.equal(await page.getByLabel("Price (EGP)", { exact: true }).inputValue(), "90071992547409.93"); await compareStone(stoneGroup(materialGroup(page, 1), 1), individual); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); await screenshot(page, "product-editor-roundtrip-mobile");
     const record = await editorJson(context, id); const before = await persistedCounts(); const stock = await context.request.post(origin + `/api/admin/catalogue/products/${id}/inventory/${record.variants[0].id}`, { headers: { Origin: origin }, data: { delta: 1, reason: "Invalid additional unique fixture unit" } }); assert.equal(stock.status(), 409); assert.equal((await editorJson(context, id)).variants[0].onHand, 1); assert.deepEqual(await persistedCounts(), before);
-    await upload(page, id, "Local mobile approved ring reference"); await page.getByRole("heading", { name: "Product photographs", exact: true }).scrollIntoViewIfNeeded(); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); await screenshot(page, "product-media-roundtrip-mobile");
+    await upload(page, id, "Local mobile approved ring reference"); await page.getByRole("heading", { name: "Photographs", exact: true }).scrollIntoViewIfNeeded(); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); await screenshot(page, "product-media-roundtrip-mobile");
     await operation(page, "Publish", `products/${id}/save`); const visitor = await context.newPage(); assert.equal((await visitor.goto(origin + "/jewels/local-mobile-unique-fixture"))!.status(), 200); assert.match(await visitor.locator("main").innerText(), /90,071,992,547,409\.93/); assert.ok(await visitor.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await operation(page, "Unpublish", `products/${id}/save`); await operation(page, "Archive", `products/${id}/save`); assert.equal((await editorJson(context, id)).status, "ARCHIVED");
   } finally { await context.close(); }
@@ -230,22 +252,24 @@ test("repeatable variants with an individual stone cannot save or adjust more th
   try {
     const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("dialog", (dialog: { accept(): Promise<void> }) => dialog.accept());
     await signIn(page, "CATALOGUE_MANAGER"); await page.goto(origin + "/admin/products/new");
-    await page.getByLabel("Product name", { exact: true }).fill("Local individual stock policy fixture");
+    await revealProductDetails(page);
+    await page.getByLabel("Jewelry Name", { exact: true }).fill("Local individual stock policy fixture");
     await page.getByLabel("URL slug", { exact: true }).fill("local-individual-stock-policy-fixture");
     await page.getByLabel("Product type", { exact: true }).selectOption("REPEATABLE");
-    await page.getByRole("button", { name: "Add variant", exact: true }).click();
-    const group = variantGroup(page, 1);
-    await fillVariant(group, { ...variants[0], sku: "LOCAL-INDIVIDUAL-LIMIT", priceEGP: "", initialStock: "2", stockReason: "Invalid duplicate physical-stone fixture units" });
+    await page.getByLabel("Sales mode", { exact: true }).selectOption("ENQUIRY_ONLY");
+    const group = materialGroup(page, 1);
+    await fillVariant(page, 1, { ...variants[0], sku: "LOCAL-INDIVIDUAL-LIMIT", priceEGP: "", initialStock: "2", stockReason: "Invalid duplicate physical-stone fixture units" });
     await group.getByRole("button", { name: "Add gemstone", exact: true }).click();
     await fillStone(stoneGroup(group, 1), { ...stones[0], kind: "INDIVIDUAL", quantity: "1", totalCaratWeight: "1.25" });
     const before = await persistedCounts();
-    await operation(page, "Create draft", "products", 409);
+    await operation(page, "Save Draft", "products", 409);
     assert.deepEqual(await persistedCounts(), before);
-    await group.getByLabel("Initial stock", { exact: true }).fill("1");
-    await group.getByLabel("Initial stock reason", { exact: true }).fill("One local physical-stone fixture unit");
-    await operation(page, "Create draft", "products"); await page.waitForURL(/\/admin\/products\/[0-9a-f-]{36}\/edit$/);
+    await page.getByLabel("Available Pieces", { exact: true }).fill("1");
+    await page.getByLabel("Initial stock reason", { exact: true }).fill("One local physical-stone fixture unit");
+    await operation(page, "Save Draft", "products"); await page.waitForURL(/\/admin\/products\/[0-9a-f-]{36}\/edit$/);
     const id = page.url().split("/").at(-2)!; const record = await editorJson(context, id);
     assert.equal(record.productType, "REPEATABLE"); assert.equal(record.variants[0].onHand, 1);
+    await reveal(page, "Detailed stock adjustments");
     const inventoryForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Apply stock adjustment for LOCAL-INDIVIDUAL-LIMIT", exact: true }) });
     await inventoryForm.getByLabel("Adjustment (+/− units)", { exact: true }).fill("1");
     await inventoryForm.getByLabel("Adjustment reason", { exact: true }).fill("Invalid duplicate individual-stone fixture unit");

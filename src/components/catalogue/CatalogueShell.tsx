@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { CatalogueHeader } from "./CatalogueHeader";
 import styles from "./catalogue.module.css";
+import { connection } from "next/server";
+import { quotationOnly } from "../../lib/commerce-policy.ts";
 
-export function CatalogueShell({ children }: { children: React.ReactNode }) {
+export async function CatalogueShell({ children }: { children: React.ReactNode }) {
+  await connection();
   return <div className={`luxury-page ${styles.root}`}>
     <a className={styles.skipLink} href="#catalogue-content">Skip to content</a>
-    <CatalogueHeader />
+    <CatalogueHeader quotationOnly={quotationOnly()} />
     <main id="catalogue-content">{children}</main>
     <footer className={styles.footer}>
       <div className="maison-container">

@@ -6,12 +6,13 @@ import { readOwnedCart } from "../cart/repository.ts";
 import { emptyCart } from "../cart/types.ts";
 import { emptyDetails, type BoutiqueLocation, type CheckoutDetails, type CheckoutView, type CheckoutErrors } from "./types.ts";
 import { checkoutStep, validateDetails } from "./validation.ts";
+import { purchasingUnavailableMessage, quotationOnly } from "../commerce-policy.ts";
 
 const revisionSql = `to_char(updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 type Owned = NonNullable<Awaited<ReturnType<typeof readOwnedCart>>>;
 type Draft = { details: CheckoutDetails; revision: string; expiresAt: string; fingerprint: string };
 export const checkoutFingerprint = (cart: CheckoutView["cart"], locations: BoutiqueLocation[]) => createHash("sha256").update(JSON.stringify({ cart, locations })).digest("hex");
-export const draftSavingEnabled = () => process.env.NODE_ENV !== "production" || process.env.CHECKOUT_DRAFT_RETENTION_READY === "true";
+export const draftSavingEnabled = () => !quotationOnly() && (process.env.NODE_ENV !== "production" || process.env.CHECKOUT_DRAFT_RETENTION_READY === "true");
 export const emptyCheckout = (): CheckoutView => ({ cart: emptyCart(), details: emptyDetails(), locations: [], fingerprint: "", draft: null, state: "CART_REVIEW", changed: false, savingAvailable: draftSavingEnabled() });
 
 export async function purgeCheckoutDrafts(limit = 100): Promise<number> {
@@ -42,6 +43,7 @@ function view(owned: Owned, stored: Draft | null, available: BoutiqueLocation[])
     state: checkoutStep(owned.cart.eligible, errors, changed), changed, savingAvailable: draftSavingEnabled() };
 }
 export async function loadCheckout(token: string | null): Promise<CheckoutView> {
+  if (quotationOnly()) return emptyCheckout();
   if (!token) return emptyCheckout();
   await purgeCheckoutDrafts();
   return withTransaction(async (client) => {
@@ -53,6 +55,7 @@ export async function loadCheckout(token: string | null): Promise<CheckoutView> 
 }
 type Command = { action: "save" | "review"; details: CheckoutDetails; fingerprint: string; revision: string | null } | { action: "delete"; revision: string | null };
 export async function prepareCheckout(token: string | null, command: Command) {
+  if (quotationOnly() && command.action !== "delete") return { status: 409, message: purchasingUnavailableMessage, checkout: emptyCheckout() };
   if (!token) return { status: 401, message: "Open your shopping bag to begin checkout preparation.", checkout: emptyCheckout() };
   await purgeCheckoutDrafts();
   return withTransaction(async (client) => {

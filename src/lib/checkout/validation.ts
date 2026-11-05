@@ -19,7 +19,7 @@ export function parseDetails(value: unknown): CheckoutDetails {
   if (normalizedPhone !== null) details.phone = normalizedPhone;
   return details as unknown as CheckoutDetails;
 }
-function emailValid(value: string) {
+export function emailValid(value: string) {
   if (value.length > 254 || !/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,63}$/i.test(value)) return false;
   const [local, domain] = value.split("@");
   return local.length <= 64 && !local.startsWith(".") && !local.endsWith(".") && !local.includes("..") && domain.split(".").every((label) => label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label));

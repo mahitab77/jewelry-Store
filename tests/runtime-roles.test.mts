@@ -1,3 +1,5 @@
+// Exercise retained direct-sales behavior; quotation-only denial has its own suites.
+process.env.COMMERCE_MODE = "DIRECT_SALES";
 import assert from 'node:assert/strict';
 import { after,before,test } from 'node:test';
 import { randomBytes,randomUUID,createHash } from 'node:crypto';
@@ -11,6 +13,7 @@ import { sessionCookie } from './helpers/admin-fixture.mts';
 import { product } from './helpers/catalogue-fixture.mts';
 import { databaseConfig,isLoopback } from '../src/lib/db/config.ts';
 import { closeDatabase } from '../src/lib/db/client.ts';
+import { runMigrations } from '../db/tools/migrate.ts';
 import { createAdminRuntime } from '../src/lib/admin/runtime.ts';
 import { handleAdminAuth } from '../src/lib/admin/http.ts';
 import { saveProduct } from '../src/lib/admin/catalogue/products.ts';
@@ -40,7 +43,7 @@ async function plan(path:string,local=true){
 before(async()=>{
   const c=databaseConfig(process.env.TEST_DATABASE_URL);
   assert.ok(process.env.TEST_DATABASE_URL&&isLoopback(c.host??'')&&process.env.NODE_ENV!=='production','Disposable loopback cluster only.');
-  base=await orderFixture();root=await mkdtemp(join(tmpdir(),'lapalme-runtime-roles-'));
+  base=await orderFixture(undefined,12);root=await mkdtemp(join(tmpdir(),'lapalme-runtime-roles-'));
   const lock=await base.data.connect();
   try{await lock.query('SELECT pg_advisory_lock(1279348813,6)');const r=await plan(resolve('infra/neon/staging-runtime-roles.review.sql'));assert.notEqual(r.status,0);assert.ok(r.guardRejected);lockVerified=true;}
   finally{await lock.query('SELECT pg_advisory_unlock(1279348813,6)');lock.release();}
@@ -51,6 +54,8 @@ before(async()=>{
   rollbackVerified=true;
   assert.deepEqual(await plan(resolve('infra/neon/staging-runtime-roles.review.sql')),{status:0,guardRejected:false,created:true,injectedFailure:false});
   provisioned=true;
+  assert.equal((await base.data.query('SELECT count(*)::int n FROM schema_migrations')).rows[0].n,12);
+  assert.deepEqual(await runMigrations(base.ownerUrl),['0013_quotation_requests_specifications.sql']);
   for(const n of names){const u=new URL(base.ownerUrl);u.username=role(n);u.password=passwords[n];urls[n]=u.toString();pools[n]=new pg.Pool(databaseConfig(urls[n]));}
   runtime=createAdminRuntime({...base.authConfig,databaseUrl:urls.admin});
 },{timeout:90000});
@@ -70,13 +75,15 @@ async function headers(which:'OWNER'|'ADMIN'|'CATALOGUE_MANAGER'='OWNER'){
 }
 test('migration source bytes retain all twelve accepted checksums',async()=>{
   const manifest=JSON.parse(await readFile('infra/cloud-run/migrations.sha256.json','utf8')) as {filename:string;sha256:string}[];
-  assert.equal(manifest.length,12);
-  for(const m of manifest)assert.equal(createHash('sha256').update(await readFile('db/migrations/'+m.filename)).digest('hex'),m.sha256);
+  assert.equal(manifest.length,13);
+  const historical=manifest.slice(0,12),approved=await readFile('infra/neon/staging-runtime-roles.review.sql','utf8');
+  assert.equal(historical.length,12);
+  for(const m of historical){assert.ok(approved.includes("'"+m.filename+"','"+m.sha256+"'"));assert.equal(createHash('sha256').update(await readFile('db/migrations/'+m.filename)).digest('hex'),m.sha256);}
 });
 test('failed grants roll back role creation; replay and wrong-target guards refuse changes',async()=>{
   assert.ok(rollbackVerified);assert.ok(lockVerified);
   for(const local of [true,false]){const r=await plan(resolve('infra/neon/staging-runtime-roles.review.sql'),local);assert.notEqual(r.status,0);assert.ok(r.guardRejected);}
-  assert.equal((await base.data.query('SELECT count(*)::int n FROM schema_migrations')).rows[0].n,12);
+  assert.equal((await base.data.query('SELECT count(*)::int n FROM schema_migrations')).rows[0].n,13);
 });
 test('six actual LOGINs authenticate with separate SCRAM secrets and reject wrong passwords',async()=>{
   for(const n of names){

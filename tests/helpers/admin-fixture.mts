@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
-import { copyFile, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import pg from "pg";
@@ -10,7 +10,7 @@ import { createAdminRuntime } from "../../src/lib/admin/runtime.ts";
 import { provisionAdmin } from "../../db/tools/provision-admin.ts";
 import type { AdminRole } from "../../src/lib/admin/policy.ts";
 
-export async function adminFixture(baseURL = "https://admin.example.test", beforeAuthenticationMigration?: (pool: pg.Pool) => Promise<void>) {
+export async function adminFixture(baseURL = "https://admin.example.test", beforeAuthenticationMigration?: (pool: pg.Pool) => Promise<void>, migrationLimit?: number) {
   const config = databaseConfig(process.env.TEST_DATABASE_URL);
   assert.ok(process.env.TEST_DATABASE_URL && isLoopback(config.host ?? "") && process.env.NODE_ENV !== "production", "Use an explicit disposable loopback test cluster.");
   const token = randomUUID().replaceAll("-", "");
@@ -50,7 +50,25 @@ export async function adminFixture(baseURL = "https://admin.example.test", befor
         await rm(directory, { recursive: true, force: true });
       }
     }
-    await runMigrations(ownerUrl);
+    if (migrationLimit !== undefined) {
+      // Historical privilege artifacts retain their exact twelve-row guards.
+      // Rehearse them against a verified prefix, never weaken those artifacts.
+      const manifest = JSON.parse(await readFile("infra/cloud-run/migrations.sha256.json", "utf8")) as { version: string; filename: string; sha256: string }[];
+      assert.ok(Number.isInteger(migrationLimit) && migrationLimit >= 6 && migrationLimit <= manifest.length);
+      const directory = await mkdtemp(join(tmpdir(), "la-palme-historical-migrations-"));
+      try {
+        for (const [index, migration] of manifest.slice(0, migrationLimit).entries()) {
+          assert.equal(migration.version, String(index + 1).padStart(4, "0"));
+          const source = await readFile(join("db/migrations", migration.filename));
+          assert.equal(createHash("sha256").update(source).digest("hex"), migration.sha256);
+          await copyFile(join("db/migrations", migration.filename), join(directory, migration.filename));
+        }
+        await runMigrations(ownerUrl, { directory });
+      } finally {
+        assert.ok(resolve(directory).startsWith(resolve(tmpdir()) + sep) && directory.includes("la-palme-historical-migrations-"));
+        await rm(directory, { recursive: true, force: true });
+      }
+    } else await runMigrations(ownerUrl);
     await maintenance.query(`CREATE ROLE "${role}" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`); roleCreated = true;
     await data.query(`GRANT USAGE ON SCHEMA public TO "${role}"`);
     await data.query(`GRANT SELECT ON admin_users, admin_auth_accounts, admin_auth_sessions, admin_auth_verifications TO "${role}"`);

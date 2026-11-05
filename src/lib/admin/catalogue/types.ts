@@ -10,12 +10,14 @@ export interface StoneInput {
 export interface VariantInput {
   id?: string; sku: string; size: string; configuration: string;
   metalType: string; metalPurity: string; metalColor: string;
+  metalWeightGrams?: string; metalWeightBasis?: "" | "ACTUAL" | "ESTIMATED";
   active: boolean; displayOrder: number; priceEGP: string;
   initialStock?: number; stockReason?: string; gemstones: StoneInput[];
 }
 export interface ProductInput {
   name: string; slug: string; description: string; productType: ProductType; salesMode: SalesMode;
   categoryIds: string[]; collectionIds: string[]; variants: VariantInput[];
+  entryMode?: "basic";
 }
 export interface EditorMedia { id: string; reference: string; altText: string; primary: boolean; displayOrder: number; provider: boolean }
 export interface EditorVariant extends VariantInput { id: string; onHand: number | null; reserved: number; available: number; stockUpdatedAt: string | null }

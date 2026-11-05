@@ -1,3 +1,5 @@
+// Exercise retained direct-sales behavior; quotation-only denial has its own suites.
+process.env.COMMERCE_MODE = "DIRECT_SALES";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";

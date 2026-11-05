@@ -6,6 +6,7 @@ import { loadCheckout, prepareCheckout } from "./repository.ts";
 import { parseDetails } from "./validation.ts";
 import { paymentsAvailable } from "../payments/config.ts";
 import { pendingOrderLink } from "../payments/orders.ts";
+import { purchasingUnavailableMessage, quotationOnly } from "../commerce-policy.ts";
 
 const json = (body: unknown, status = 200, clear = false) => Response.json(body, { status, headers: {
   "Cache-Control": "private, no-store, max-age=0", "Vary": "Cookie", "X-Content-Type-Options": "nosniff", ...(clear ? { "Set-Cookie": clearCartCookie() } : {}),
@@ -16,6 +17,9 @@ export async function checkoutHttp(request: Request, path: string[] = []): Promi
     if (request.headers.get("sec-fetch-site") === "cross-site") throw new CartError("This checkout request could not be verified.", 403);
     const session = readToken(request.headers);
     if (request.method === "GET" && !path.length) {
+      // A legacy cart cookie can still authorize historical order reads. Do not
+      // erase it merely because prospective checkout is now unavailable.
+      if (quotationOnly()) return json({ checkout: await loadCheckout(session.token), paymentsAvailable: false, pendingOrderUrl: null, message: purchasingUnavailableMessage });
       if (session.token) await throttleCart(true);
       const checkout = await loadCheckout(session.token);
       return json({ checkout, paymentsAvailable: paymentsAvailable(), pendingOrderUrl: await pendingOrderLink(session.token) }, 200, session.present && !checkout.cart.revision);

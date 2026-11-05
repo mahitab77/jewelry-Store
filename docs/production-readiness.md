@@ -1,5 +1,71 @@
 # Phase 11 release readiness — 2026-10-28
 
+## Quotation-only model — local implementation, not deployed
+
+The working tree extends the uncommitted admin simplification with one server-only
+quotation policy, one shared guest request workflow and one operations inbox.
+No Cloud Run, Neon, IAM, Secret Manager, Cloudinary or payment-provider operation
+was performed. The reported healthy staging v3 remains the rollback baseline;
+these local changes are not present there until a separately approved release.
+
+The new release defaults to quotation-only. Do not set private
+`COMMERCE_MODE=DIRECT_SALES` without a separate commercial/security review. Missing
+and invalid values fail closed; no NEXT_PUBLIC or customer parameter enables sales.
+Existing commerce regression fixtures explicitly exercise DIRECT_SALES, while the
+new policy suites prove default-denial even with other payment flags enabled.
+Keep Paymob and checkout retention readiness disabled on staging.
+
+One additive migration0013 introduces nullable exact metal grams/basis, selected
+request configurations, consultation channel and bounded original design context;
+no new business tables or dependencies. Existing0001–0012 and approved role SQL
+bytes/checksums remain unchanged. The fresh-database offline preparation tool now
+verifies the complete thirteen-file manifest. **Its fresh-only review must not be
+used against the existing Neon database.** Hosted0012→0013 needs its own reviewed,
+target-pinned incremental procedure and separate operator approval. Do not replay
+historical role provisioning. The new staging-request-grants.review.sql likewise
+requires separate approval after migration/ledger verification; it grants only
+request-table SELECT and documented INSERT/UPDATE columns to the existing app role.
+
+Request submission collects name, email/telephone, message, selected piece and
+optional preferred Cairo time. Zoom requires email. No customer registration,
+profile, shopping cart, attachment or financial record is created. Staff manually
+checks /admin/requests; operations:manage is required at every boundary and the
+existing CATALOGUE_MANAGER account is not upgraded. Successful submission means
+receipt only. No automatic email, firm quotation or meeting confirmation is promised.
+
+Launch gates: name an operations-authorized employee; verify outbound customer
+contact; approve personal-data retention/replay periods; assign consultation
+confirmation responsibility. No guessed purge period, anonymous status lookup,
+unrestricted DELETE grant, email service or background worker is introduced.
+An approved retention procedure must handle dependencies, preserve non-PII audits
+and explain that purged requests no longer provide durable duplicate protection.
+
+The original request snapshot intentionally excludes prices, private certification
+fields, descriptions and image bytes; it preserves selected public specifications,
+not an archived photographic record. Existing image upload/delivery/cleanup is reused.
+Live Cloudinary credentials/configuration and real upload/delivery/retirement tests
+remain separately authorized; customer inspiration uploads are deferred.
+
+Future deployment must preserve canonical origins, credentials, resources, public
+invocation, noindex and disabled payments. Record the previous healthy revision and
+digest before applying an approved immutable image. Rollback service traffic first;
+leave additive schema, received requests and financial history intact. Original v3
+lacks the quotation guard, so retain a healthy quotation-only revision as the
+preferred subsequent rollback target. Existing issued payment intentions require
+normal verified settlement/reconciliation; policy changes never justify releasing
+uncertain holds. Continue the existing operator checkout-draft purge where relevant:
+quotation-mode early returns do not perform opportunistic checkout retention work.
+
+Local verification completed on 2026-11-05 using disposable PostgreSQL 18.6,
+including fresh installation, the populated 0012-to-0013 upgrade and the proposed
+request grants under an actual restricted-role login. All 326 integration tests,
+111 browser tests and six transport tests passed (443 total, none skipped).
+`npm run lint`, `npx tsc --noEmit` and `npm run build` passed. Browser checks covered
+320, 768, 1024 and 1440px, all five guest journeys, idempotent uncertainty recovery,
+operations authorization, private-state clearing and the existing commerce flows.
+Homepage assets, global styling and layout geometry were preserved; necessary
+quotation wording/destinations changed. These results authorize no hosted action.
+
 ## Staging v3 release preparation — 2026-11-04
 
 The current release target is the existing `la-palme-dor-staging` Cloud Run

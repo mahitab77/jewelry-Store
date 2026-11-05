@@ -13,8 +13,8 @@ export function ContactOptions({ appointment = false }: { appointment?: boolean 
         className={`hero-cta hero-primary-button ${styles.button}`}>{appointment ? "Email an appointment enquiry" : method.label}</a>)}
     </> : <>
       <h2 className="font-display">Contact details are being confirmed.</h2>
-      <p>{appointment ? "Appointment enquiries will open here when a verified contact channel is available. Viewing this page does not reserve a date or time."
-        : "A verified email or telephone channel is not available on this page yet. Please check back for confirmed contact details."}</p>
+      <p>{appointment ? "Use the request form above to discuss a consultation. Direct contact details are still being verified. No date or time is reserved until staff confirm the arrangements."
+        : "Use the request form above to begin a conversation. A verified direct email or telephone channel is not available here yet."}</p>
       <Link href={appointment ? "/contact" : "/collections"} className={`hero-cta hero-secondary-button ${styles.button}`}>
         {appointment ? "Contact & availability" : "Explore the collections"}
       </Link>

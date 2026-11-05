@@ -1,3 +1,5 @@
+// Exercise retained direct-sales behavior; quotation-only denial has its own suites.
+process.env.COMMERCE_MODE = "DIRECT_SALES";
 // Requires a production build, a disposable loopback PostgreSQL cluster, and
 // existing Playwright/Chromium. Creates no permanent catalogue or browser data.
 import assert from "node:assert/strict";
@@ -209,7 +211,8 @@ test("jewel gallery, EGP prices, variants, bespoke and enquiry destinations work
   await page.getByRole("button", { name: "Previous photograph", exact: true }).focus();
   await page.keyboard.press("Enter");
   assert.equal(await page.getByRole("button", { name: "Show photograph 1" }).getAttribute("aria-pressed"), "true");
-  assert.equal(await page.getByRole("link", { name: "Enquire with the boutique" }).getAttribute("href"), "/contact");
+  const quotation = new URL((await page.getByRole("link", { name: "Request a Quotation", exact: true }).getAttribute("href"))!,origin);
+  assert.equal(quotation.pathname,"/contact"); assert.equal(quotation.searchParams.get("intent"),"QUOTATION"); assert.equal(quotation.searchParams.get("product"),"dev-unique-ring"); assert.equal(quotation.searchParams.get("variant"),id(201));
   assert.match(await page.title(), /unique-ring/);
   assert.equal(await page.locator('link[rel="canonical"]').getAttribute("href"), "https://catalogue.boutique.test/jewels/dev-unique-ring");
   assert.doesNotMatch(await page.content(), /PRIVATE_STOREFRONT_SENTINEL|DATABASE_URL|phase03_validator|lapalme_browser_reader/);
@@ -226,7 +229,8 @@ test("jewel gallery, EGP prices, variants, bespoke and enquiry destinations work
   assert.equal(await page.getByRole("button", { name: "Next photograph", exact: true }).count(), 0);
   await page.goto(origin + "/jewels/dev-bespoke-bracelet");
   assert.match(await page.locator("main").innerText(), /Photography is available/);
-  assert.equal(await page.getByRole("link", { name: "Discuss a bespoke piece" }).getAttribute("href"), "/appointment");
+  const consultation = new URL((await page.locator("main").getByRole("link", { name: "Consult the Designer", exact: true }).getAttribute("href"))!,origin);
+  assert.equal(consultation.pathname,"/appointment"); assert.equal(consultation.searchParams.get("intent"),"CONSULTATION"); assert.equal(consultation.searchParams.get("product"),"dev-bespoke-bracelet"); assert.equal(consultation.searchParams.get("variant"),id(204));
   assert.equal(await page.getByRole("button", { name: /Add to cart|checkout/i }).count(), 0);
   await page.close();
 });
@@ -308,7 +312,12 @@ test("six editorial routes have metadata, semantic headings and truthful contact
     assert.ok((await page.locator('meta[name="description"]').getAttribute("content")).length > 30);
     const canonical = page.locator('link[rel="canonical"]');
     if (await canonical.count()) assert.equal(await canonical.getAttribute("href"), "https://catalogue.boutique.test" + path);
-    assert.equal(await page.locator('form,input[type="date"],input[type="time"],a[href^="tel:"],a[href*="wa.me"]').count(), 0);
+    const requestEntry = path === "/contact" || path === "/appointment";
+    assert.equal(await page.locator("form").count(), requestEntry ? 1 : 0);
+    assert.equal(await page.locator('input[type="date"]').count(), path === "/appointment" ? 1 : 0);
+    assert.equal(await page.locator('input[type="time"]').count(), path === "/appointment" ? 1 : 0);
+    assert.equal(await page.locator('a[href^="tel:"],a[href*="wa.me"]').count(), 0);
+    if (requestEntry) assert.ok(await page.getByRole("button", { name: "Send request", exact: true }).isVisible());
     assert.equal(await page.locator('a[href^="mailto:"]').count(), 0);
     assert.doesNotMatch(await page.locator("main").innerText(), /contact@lapalmedorgems\.com|successfully submitted|appointment confirmed/i);
     if (path === "/contact" || path === "/appointment") assert.match(await page.locator("main").innerText(), /Contact details are being confirmed/);
@@ -331,7 +340,7 @@ test("shared footer and mobile navigation reach every editorial page without dup
   await page.getByRole("navigation", { name: "Site sections", exact: true }).getByRole("link", { name: "Bespoke", exact: true }).click();
   await page.waitForURL("**/bespoke");
   assert.equal(await page.getByRole("button", { name: "Open menu", exact: true }).getAttribute("aria-expanded"), "false");
-  await page.getByRole("link", { name: "Book", exact: true }).click();
+  await page.getByRole("link", { name: "Consult", exact: true }).click();
   await page.waitForURL("**/appointment");
   await page.close();
 });

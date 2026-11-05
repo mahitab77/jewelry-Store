@@ -1,0 +1,39 @@
+.root { min-width: 0; }
+.root :is(details,summary,section,div) { min-width: 0; }
+.root :is(input,select,textarea) { scroll-margin-block: 6rem; }
+.root a { text-underline-offset: 4px; }
+.description { margin-block: 1.5rem; }
+.description textarea { min-height: 190px; line-height: 1.8; }
+.fieldHelp { color: var(--beige); font-size: .76rem; line-height: 1.7; font-weight: 400; }
+.priceStock { align-items: start; }
+.quantity { display: grid; gap: .6rem; }
+.quantity > button { justify-self: start; }
+.collection { max-width: 38rem; margin-top: 1.5rem; }
+.photoPicker { border: 0; padding: 0; }
+.photoPicker input[type="file"] { line-height: 1.8; padding: .7rem; }
+.photoPicker input::file-selector-button { background: transparent; border: 1px solid var(--border); color: var(--ivory); padding: .5rem; margin-right: .5rem; font: inherit; cursor: pointer; }
+.preview { height: 100%; width: 100%; object-fit: contain; }
+.filename { overflow-wrap: anywhere; font-size: .8rem; color: var(--beige); margin-block: .5rem; }
+.photoDetails { margin-block: 1rem; }
+.photoDetails summary { min-height: 44px; cursor: pointer; font-size: .8rem; }
+.additionalTitle { margin-top: 2.5rem; font-size: 2rem; }
+.disclosure { border: 1px solid var(--border); margin-block: 1rem; }
+.disclosure > summary { cursor: pointer; min-height: 56px; padding: 1rem clamp(1rem,3vw,2rem); font-size: .95rem; color: var(--ivory); line-height: 1.5; }
+.disclosure > summary::marker { color: var(--gold); }
+.disclosure > summary:focus-visible, .photoDetails > summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
+.disclosure[open] > summary { border-bottom: 1px solid var(--border); }
+.disclosureBody { border: 0; padding: clamp(1rem,3vw,2rem); margin: 0; }
+.disclosureBody h3, .variantSection h3 { font-family: var(--font-cormorant),Georgia,serif; font-size: 1.6rem; margin-block: 1rem; overflow-wrap: anywhere; }
+.variantSection + .variantSection { border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem; }
+.variantPanel { padding: 1rem; }
+.savedURL { font-size: .8rem; line-height: 1.8; margin-block: 1rem; color: var(--beige); overflow-wrap: anywhere; }
+.checklist { list-style: none; padding: 0; margin: 0; display: grid; gap: .7rem; }
+.checklist li { display: flex; align-items: start; gap: .7rem; font-size: .85rem; line-height: 1.7; color: var(--beige); overflow-wrap: anywhere; }
+.checklist li > span:first-child { color: var(--gold); flex-shrink: 0; }
+.publishPanel { margin-top: 2rem; }
+@media(max-width:767px) {
+  .quantity > button { width: 100%; justify-self: stretch; }
+  .disclosureBody { padding: 1rem; }
+  .variantPanel { padding: .7rem; }
+  .photoPicker input[type="file"] { font-size: .75rem; }
+}

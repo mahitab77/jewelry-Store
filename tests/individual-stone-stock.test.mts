@@ -1,3 +1,5 @@
+// Exercise retained direct-sales behavior; quotation-only denial has its own suites.
+process.env.COMMERCE_MODE = "DIRECT_SALES";
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import { catalogueFixture, editable, product, variant } from "./helpers/catalogue-fixture.mts";

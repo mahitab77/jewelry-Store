@@ -15,7 +15,7 @@ export default async function AdminPage() {
       <div className={styles.cards}>
         <article><h3>Catalogue</h3><p>Manage products, photographs, pricing and inventory.</p><Link href="/admin/products">Manage catalogue</Link><p><Link href="/admin/taxonomy">Manage categories and collections</Link></p></article>
         {hasPermission(admin.role,"orders:read")?<article><h3>Orders</h3><p>Review orders, verified payment history and personal fulfillment.</p><Link href="/admin/orders">Manage orders</Link></article>:null}
-        <article><h3>Enquiries</h3><p>Future handling of boutique conversations.</p><span>Not yet available</span></article>
+        {hasPermission(admin.role,"operations:manage") ? <article><h3>Boutique requests</h3><p>Review private quotations, design changes and designer consultation requests.</p><Link href="/admin/requests">Manage boutique requests</Link></article> : null}
       </div>
     </section>
   </>;

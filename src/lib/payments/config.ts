@@ -3,6 +3,7 @@ import { cartOrigin } from '../cart/session.ts';
 import { draftSavingEnabled } from '../checkout/repository.ts';
 import { databaseConfig } from '../db/config.ts';
 import { PaymentError } from './types.ts';
+import { purchasingUnavailableMessage, quotationOnly } from '../commerce-policy.ts';
 
 export const PAYMOB_API = 'https://accept.paymob.com';
 export const PAYMOB_CHECKOUT = 'https://eg.checkout.paymob.com/';
@@ -20,6 +21,7 @@ export function paymobConfig() {
   return { ...verification, secretKey: e.PAYMOB_SECRET_KEY!, publicKey: e.PAYMOB_PUBLIC_KEY!, apiKey: e.PAYMOB_API_KEY!, origin };
 }
 export function requirePaymentInitiation() {
+  if (quotationOnly()) throw new PaymentError(purchasingUnavailableMessage,409);
   if (process.env.PAYMENTS_TEST_ENABLED !== 'true' || process.env.PAYMENTS_RECONCILIATION_READY !== 'true' || !draftSavingEnabled()) throw new PaymentError('Online test payment is currently unavailable. You can still prepare your details.',503);
   databaseConfig(process.env.PAYMENT_DATABASE_URL || '');
   return paymobConfig();

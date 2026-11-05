@@ -3,9 +3,11 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { getAdminRuntime, type AdminRuntime } from "../runtime.ts";
 import { catalogueTransaction, catalogueAudit, lockProduct, touchProduct } from "./transaction.ts";
-import { fail, integer, object, parseSubmission, text, uuid, egpToMinor } from "./validation.ts";
+import { CatalogueAdminError, fail, integer, object, parseSubmission, text, uuid, egpToMinor } from "./validation.ts";
 import type { ProductInput, StoneInput } from "./types.ts";
 import { publicImageSource } from "../../catalogue/presentation.ts";
+import { automaticSku, automaticSlug, lockAutomaticValues } from "./automatic-values.ts";
+import { quotationOnly } from "../../commerce-policy.ts";
 
 const stoneColumns = ["specification_kind", "stone_type", "variety", "shape", "color", "carat_weight", "origin", "treatment_information", "laboratory", "report_reference"];
 function stoneValues(s: StoneInput) { return [s.kind, s.type, s.variety || null, s.shape, s.color, s.caratWeight || null, s.origin || null, s.treatment || null, s.laboratory || null, s.reportReference || null]; }
@@ -57,14 +59,16 @@ async function saveAssignments(client: PoolClient, id: string, p: ProductInput) 
 }
 
 async function assertPublishable(client: PoolClient, id: string, p: ProductInput) {
+  if (p.description.length < 20 || !/\p{L}/u.test(p.description)) throw new CatalogueAdminError("Add a meaningful description of at least 20 characters before publication.", 400, "product.description");
   const visible = await client.query(`WITH RECURSIVE visible AS (
     SELECT id FROM categories WHERE parent_id IS NULL AND is_visible
     UNION ALL SELECT c.id FROM categories c JOIN visible v ON c.parent_id=v.id WHERE c.is_visible)
     SELECT id FROM visible WHERE id=ANY($1::UUID[])`, [p.categoryIds]);
-  if (!visible.rowCount) fail("Publication needs at least one publicly visible category.");
+  if (!visible.rowCount) throw new CatalogueAdminError("Publication needs at least one publicly visible category.", 400, "product.categoryIds");
   const variants = p.variants.filter((v) => v.active);
-  if (!variants.length) fail("Publication needs at least one active variant.");
-  if (p.salesMode !== "ENQUIRY_ONLY" && variants.some((v) => !v.priceEGP)) fail("Every active direct-purchase variant needs an EGP selling price.");
+  if (!variants.length) throw new CatalogueAdminError("Publication needs at least one active variant.", 400, "product.variants");
+  const missingPrice = p.variants.findIndex((v) => v.active && !v.priceEGP);
+  if (!quotationOnly() && p.salesMode !== "ENQUIRY_ONLY" && missingPrice >= 0) throw new CatalogueAdminError("Every active direct-purchase variant needs an EGP selling price.", 400, `product.variants.${missingPrice}.priceEGP`);
   const media = (await client.query("SELECT id,external_media_reference AS reference,media_type AS type,alt_text AS \"altText\",is_primary AS \"isPrimary\" FROM product_media WHERE product_id=$1 AND media_type='IMAGE'", [id])).rows;
   if (!media.some((m) => m.isPrimary && publicImageSource(m)) || media.some((m) => !m.altText?.trim() || m.altText.trim().length < 5)) fail("Publication needs a primary photograph and meaningful alt text of at least five characters for every image.");
   // Lock current inventory without accepting reserved values from an editor.
@@ -80,24 +84,38 @@ export async function saveProduct(headers: Headers, id: string | null, input: un
     const submission = parseSubmission(input);
     const p = submission.product;
     const productId = id ? uuid(id) : randomUUID();
+    await lockAutomaticValues(client);
     const old = id ? await lockProduct(client, productId) : null;
     if (!old && submission.action !== "save") fail("Create a draft before publishing or adding photographs.");
     if (old && old.revision !== submission.revision) fail("This product changed after the editor opened. Reload before saving.", 409);
+    if (!p.slug) p.slug = old?.slug ?? await automaticSlug(client, "products", p.name);
     if (old?.published_at && p.slug !== old.slug) fail("This URL is locked after first publication. Keep the existing slug.", 409);
-    const existing = old ? (await client.query("SELECT id FROM product_variants WHERE product_id=$1 FOR UPDATE", [productId])).rows.map((v) => v.id as string) : [];
+    const existingVariants = old ? (await client.query<{ id: string; sku: string; metalWeightGrams: string | null; metalWeightBasis: "ACTUAL" | "ESTIMATED" | null }>(`SELECT id,sku,metal_weight_grams::TEXT AS "metalWeightGrams",metal_weight_basis AS "metalWeightBasis" FROM product_variants WHERE product_id=$1 FOR UPDATE`, [productId])).rows : [];
+    const existing = existingVariants.map((v) => v.id);
     if (old && existing.length && old.product_type !== p.productType) fail("Product type is locked once variants exist.", 409);
     if (existing.some((variantId) => !p.variants.some((v) => v.id === variantId))) fail("Keep existing variants and deactivate them instead of removing them.");
     if (p.variants.some((v) => v.id && !existing.includes(v.id))) fail("A variant does not belong to this product.", 409);
+    for (const v of p.variants) {
+      const previous = v.id ? existingVariants.find((oldVariant) => oldVariant.id === v.id)! : undefined;
+      if (!v.sku) v.sku = previous?.sku ?? await automaticSku(client);
+      // Older callers do not know these additive fields. Omission keeps an
+      // existing measurement; an explicit empty pair records unknown values.
+      if (v.metalWeightGrams === undefined && v.metalWeightBasis === undefined) {
+        v.metalWeightGrams = previous?.metalWeightGrams ?? "";
+        v.metalWeightBasis = previous?.metalWeightBasis ?? "";
+      }
+    }
     if (old) await client.query("UPDATE products SET name=$2,slug=$3,description=$4,product_type=$5,sales_mode=$6 WHERE id=$1", [productId, p.name, p.slug, p.description || null, p.productType, p.salesMode]);
     else await client.query("INSERT INTO products(id,name,slug,description,product_type,sales_mode) VALUES($1,$2,$3,$4,$5,$6)", [productId, p.name, p.slug, p.description || null, p.productType, p.salesMode]);
     await saveAssignments(client, productId, p);
     for (const v of p.variants) {
       const variantId = v.id ?? randomUUID();
-      await client.query(`INSERT INTO product_variants(id,product_id,product_type,sku,size_label,configuration_label,metal_type,metal_purity,metal_color,is_active,display_order)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO UPDATE SET sku=EXCLUDED.sku,size_label=EXCLUDED.size_label,
+      await client.query(`INSERT INTO product_variants(id,product_id,product_type,sku,size_label,configuration_label,metal_type,metal_purity,metal_color,is_active,display_order,metal_weight_grams,metal_weight_basis)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(id) DO UPDATE SET sku=EXCLUDED.sku,size_label=EXCLUDED.size_label,
         configuration_label=EXCLUDED.configuration_label,metal_type=EXCLUDED.metal_type,metal_purity=EXCLUDED.metal_purity,
-        metal_color=EXCLUDED.metal_color,is_active=EXCLUDED.is_active,display_order=EXCLUDED.display_order,updated_at=clock_timestamp()`,
-      [variantId, productId, p.productType, v.sku, v.size || null, v.configuration || null, v.metalType || null, v.metalPurity || null, v.metalColor || null, v.active, v.displayOrder]);
+        metal_color=EXCLUDED.metal_color,is_active=EXCLUDED.is_active,display_order=EXCLUDED.display_order,
+        metal_weight_grams=EXCLUDED.metal_weight_grams,metal_weight_basis=EXCLUDED.metal_weight_basis,updated_at=clock_timestamp()`,
+      [variantId, productId, p.productType, v.sku, v.size || null, v.configuration || null, v.metalType || null, v.metalPurity || null, v.metalColor || null, v.active, v.displayOrder, v.metalWeightGrams || null, v.metalWeightBasis || null]);
       await catalogueAudit(client, adminId, productId, "CATALOGUE_VARIANT_SAVED", { variantId, created: !v.id });
       const previousPrice = (await client.query("SELECT id,amount_minor::TEXT AS amount FROM product_prices WHERE variant_id=$1 AND currency='EGP' AND is_active FOR UPDATE", [variantId])).rows[0];
       const price = egpToMinor(v.priceEGP);
@@ -133,15 +151,24 @@ export async function saveProduct(headers: Headers, id: string | null, input: un
 
 export async function adjustInventory(headers: Headers, productId: string, variantId: string, input: unknown, runtime: AdminRuntime = getAdminRuntime()) {
   return catalogueTransaction(headers, async (client, adminId) => {
-    uuid(productId); uuid(variantId); await lockProduct(client, productId);
-    const body = object(input, ["delta", "reason"]), delta = integer(body.delta, "Stock adjustment", -1000000, 1000000), reason = text(body.reason, "Adjustment reason", 240, true);
+    uuid(productId); uuid(variantId); const product = await lockProduct(client, productId);
+    const body = object(input, ["delta", "reason", "revision", "expectedOnHand", "expectedReserved"]), delta = integer(body.delta, "Stock adjustment", -1000000, 1000000), reason = text(body.reason, "Adjustment reason", 240, true);
+    const revision = body.revision === undefined ? undefined : text(body.revision, "Editor version", 40, true);
+    if (revision !== undefined && revision !== product.revision) fail("This product changed. Reload before adjusting available pieces.", 409);
+    const expectedOnHand = body.expectedOnHand === null ? null : body.expectedOnHand === undefined ? undefined : integer(body.expectedOnHand, "Previous stock", 0, 1000000);
+    const expectedReserved = body.expectedReserved === undefined ? undefined : integer(body.expectedReserved, "Previous reserved stock", 0, 1000000);
     if (!delta) fail("An adjustment must change the stock quantity.");
     const variant = (await client.query("SELECT product_type FROM product_variants WHERE id=$1 AND product_id=$2", [variantId, productId])).rows[0];
     if (!variant) fail("Variant not found for this product.", 404);
-    await client.query("INSERT INTO inventory(variant_id,product_type) VALUES($1,$2) ON CONFLICT(variant_id) DO NOTHING", [variantId, variant.product_type]);
+    const initialized = await client.query("INSERT INTO inventory(variant_id,product_type) VALUES($1,$2) ON CONFLICT(variant_id) DO NOTHING RETURNING variant_id", [variantId, variant.product_type]);
+    // null is an explicit missing-row snapshot, not permission to ignore stock.
+    // The unique insert also waits for a concurrent initializer, whose committed
+    // row must reject that snapshot instead of receiving an outdated adjustment.
+    if (expectedOnHand === null && initialized.rowCount !== 1) fail("Available pieces changed after this editor loaded. Reload before adjusting them.", 409);
     const stock = (await client.query(`SELECT i.*,EXISTS(SELECT 1 FROM product_gemstones pg
       WHERE pg.variant_id=i.variant_id AND pg.specification_kind='INDIVIDUAL') AS has_individual
       FROM inventory i WHERE variant_id=$1 FOR UPDATE OF i`, [variantId])).rows[0];
+    if ((expectedOnHand !== undefined && expectedOnHand !== null && expectedOnHand !== stock.on_hand) || (expectedReserved !== undefined && expectedReserved !== stock.reserved)) fail("Available pieces changed after this editor loaded. Reload before adjusting them.", 409);
     const next = stock.on_hand + delta;
     assertIndividualStock(next, stock.has_individual);
     if (next < stock.reserved || next < 0 || next > 1000000 || (variant.product_type === "ONE_OF_A_KIND" && next > 1) || variant.product_type === "BESPOKE") fail("The adjustment would conflict with reserved units or the product's stock limits.", 409);

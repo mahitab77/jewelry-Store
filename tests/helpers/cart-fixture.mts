@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { closeDatabase } from "../../src/lib/db/client.ts";
 import { catalogueFixture } from "./catalogue-fixture.mts";
 
-export async function cartFixture(origin = "https://cart.boutique.test") {
-  const f = await catalogueFixture(origin), suffix = randomUUID().replaceAll("-", "");
+export async function cartFixture(origin = "https://cart.boutique.test", migrationLimit?: number) {
+  const f = await catalogueFixture(origin, true, migrationLimit), suffix = randomUUID().replaceAll("-", "");
   const cartRole = `lapalme_cart_${suffix}`, readerRole = `lapalme_cart_reader_${suffix}`;
   const created: string[] = [];
   try {

@@ -1,3 +1,5 @@
+// Exercise retained direct-sales behavior; quotation-only denial has its own suites.
+process.env.COMMERCE_MODE = "DIRECT_SALES";
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { adminBrowserHarness } from "./helpers/admin-browser.mts";
@@ -10,6 +12,12 @@ beforeEach(() => { ({ browser, fixture } = h.current()); });
 const pause = (ms: number) => new Promise((done) => setTimeout(done, ms));
 const alert = (page: Page) => page.locator("main").getByRole("alert");
 async function context() { return browser.newContext({ ignoreHTTPSErrors: true, reducedMotion: "reduce" }); }
+async function revealProductDetails(page: Page, names = ["Materials and gemstones", "Sizes and variants", "Pricing and inventory", "Publication and visibility", "Technical details"]) {
+  for (const name of names) {
+    const summary = page.locator("summary").filter({ hasText: name });
+    if (await summary.locator("..").getAttribute("open") === null) await summary.click();
+  }
+}
 async function post(page: Page, url: string, button: string, expected = 200) {
   const waiting = page.waitForResponse((response: { url(): string; request(): { method(): string } }) => response.url() === origin + url && response.request().method() === "POST");
   await page.getByRole("button", { name: button, exact: true }).click();
@@ -53,6 +61,7 @@ test("taxonomy verified saves preserve the other dirty form and conflicting save
     await signIn(page); await page.goto(origin + "/admin/taxonomy");
     await page.getByLabel("Choose category", { exact: true }).selectOption(id(1)); await page.getByLabel("Choose collection", { exact: true }).selectOption(id(12));
     const category = page.getByRole("group", { name: "Edit category", exact: true }), collection = page.getByRole("group", { name: "Edit collection", exact: true });
+    await category.locator("summary").click(); await collection.locator("summary").click();
     await category.getByLabel("Description", { exact: true }).fill("Local verified category update."); await collection.getByLabel("Description", { exact: true }).fill("Keep this unsaved collection description.");
     await post(page, "/api/admin/catalogue/taxonomy", "Save category"); await page.getByRole("status").filter({ hasText: "Category saved." }).waitFor();
     assert.equal(await collection.getByLabel("Description", { exact: true }).inputValue(), "Keep this unsaved collection description.");
@@ -72,7 +81,7 @@ test("taxonomy timeout after server commit is not retried and explicit reload re
   page.on("dialog", (dialog: { accept(): Promise<void> }) => dialog.accept()); const held = new Promise<void>((done) => { release = done; });
   try {
     await signIn(page); await page.goto(origin + "/admin/taxonomy"); await page.getByLabel("Choose category", { exact: true }).selectOption(id(2));
-    const group = page.getByRole("group", { name: "Edit category", exact: true }); await group.getByLabel("Description", { exact: true }).fill("Local committed category, delayed reply.");
+    const group = page.getByRole("group", { name: "Edit category", exact: true }); await group.locator("summary").click(); await group.getByLabel("Description", { exact: true }).fill("Local committed category, delayed reply.");
     await page.route("**/api/admin/catalogue/taxonomy", async (route: { request(): { method(): string }; fetch(): Promise<{ status(): number }>; fulfill(value: unknown): Promise<void>; continue(): Promise<void> }) => {
       if (route.request().method() !== "POST") { await route.continue(); return; } attempts++;
       const response = await route.fetch(); assert.equal(response.status(), 200); await held; try { await route.fulfill({ response }); } catch { /* The browser aborted the delayed response. */ }
@@ -91,7 +100,7 @@ test("product prices identify and focus the invalid variant while exact EGP valu
     await signIn(page); await page.goto(origin + "/admin/products/" + id(102) + "/edit");
     const price = page.getByRole("group", { name: "Variant 2", exact: true }).getByLabel("Selling price (EGP)", { exact: true });
     await price.fill("12.345"); const response = await post(page, "/api/admin/catalogue/products/" + id(102) + "/save", "Save changes", 400);
-    assert.ok((await response.json()).fieldErrors["product.variants.1.priceEGP"]); await alert(page).waitFor(); assert.match(await alert(page).innerText(), /Variant 2.*Selling price/);
+    assert.ok((await response.json()).fieldErrors["product.variants.1.priceEGP"]); await alert(page).waitFor(); assert.match(await alert(page).innerText(), /Configuration 2.*Price/);
     assert.equal(await price.getAttribute("aria-invalid"), "true"); assert.ok(await price.getAttribute("aria-describedby"));
     await page.waitForFunction(() => document.activeElement?.getAttribute("data-field-path") === "product.variants.1.priceEGP");
     assert.equal(await price.getAttribute("inputmode"), "decimal"); await price.fill("2650.07");
@@ -107,6 +116,7 @@ test("valid long SKUs and multiple-variant text fit required widths and names ex
     await signIn(page);
     for (const width of [320, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 }); await page.goto(origin + "/admin/products/" + id(102) + "/edit");
+      await revealProductDetails(page); await revealProductDetails(page, ["Detailed stock adjustments"]);
       assert.equal(await page.getByLabel("SKU", { exact: true }).first().inputValue(), sku);
       assert.deepEqual(await page.locator("main input,main select,main textarea,main fieldset,main button").evaluateAll((elements: HTMLElement[]) => elements.filter((element) => {
         const r = element.getBoundingClientRect(); return r.width > 0 && (r.x < -1 || r.right > innerWidth + 1);
@@ -124,10 +134,10 @@ test("new-product timeout after commit prevents repeated creation and offers cat
   const held = new Promise<void>((done) => { release = done; }); page.on("dialog", (dialog: { accept(): Promise<void> }) => dialog.accept());
   try {
     await signIn(page); await page.goto(origin + "/admin/products/new");
-    await page.getByLabel("Product name", { exact: true }).fill("Local uncertain create fixture"); await page.getByLabel("URL slug", { exact: true }).fill("local-uncertain-create-fixture");
+    await page.getByLabel("Jewelry Name", { exact: true }).fill("Local uncertain create fixture"); await revealProductDetails(page, ["Technical details"]); await page.getByLabel("URL slug", { exact: true }).fill("local-uncertain-create-fixture");
     await page.route("**/api/admin/catalogue/products", async (route: { fetch(): Promise<{ status(): number }>; fulfill(value: unknown): Promise<void> }) => { attempts++; const response = await route.fetch(); assert.equal(response.status(), 200); await held; try { await route.fulfill({ response }); } catch { /* No mutation retry follows the timeout. */ } });
-    await page.getByRole("button", { name: "Create draft", exact: true }).click(); await alert(page).filter({ hasText: "outcome is uncertain" }).waitFor();
-    assert.ok(await page.getByRole("button", { name: "Create draft", exact: true }).isDisabled()); assert.ok(await page.getByLabel("Product name", { exact: true }).isEnabled()); assert.equal(attempts, 1);
+    await page.getByRole("button", { name: "Save Draft", exact: true }).click(); await alert(page).filter({ hasText: "outcome is uncertain" }).waitFor();
+    assert.ok(await page.getByRole("button", { name: "Save Draft", exact: true }).isDisabled()); assert.ok(await page.getByLabel("Jewelry Name", { exact: true }).isEnabled()); assert.equal(attempts, 1);
     assert.equal((await fixture.data.query("SELECT count(*)::int AS n FROM products WHERE slug='local-uncertain-create-fixture'")).rows[0].n, 1);
     await page.getByLabel("URL slug", { exact: true }).fill("different-unsent-local-slug");
     assert.match(await page.getByRole("link", { name: "Check product catalogue before creating another draft", exact: true }).getAttribute("href"), /q=local-uncertain-create-fixture$/);
@@ -139,13 +149,13 @@ test("existing-product network uncertainty blocks mutations and reload recovers 
   const c = await context(), page = await c.newPage(); page.on("dialog", (dialog: { accept(): Promise<void> }) => dialog.accept()); let attempts = 0;
   try {
     await signIn(page); await page.goto(origin + "/admin/products/" + id(102) + "/edit");
-    const oldName = await page.getByLabel("Product name", { exact: true }).inputValue(); await page.getByLabel("Product name", { exact: true }).fill("Local unsent network failure");
+    const oldName = await page.getByLabel("Jewelry Name", { exact: true }).inputValue(); await page.getByLabel("Jewelry Name", { exact: true }).fill("Local unsent network failure");
     await page.route("**/api/admin/catalogue/products/" + id(102) + "/save", async (route: { abort(reason: string): Promise<void> }) => { attempts++; await route.abort("connectionfailed"); });
     await page.getByRole("button", { name: "Save changes", exact: true }).click(); await alert(page).filter({ hasText: "outcome is uncertain" }).waitFor();
     for (const label of ["Save changes", "Unpublish", "Archive"]) assert.ok(await page.getByRole("button", { name: label, exact: true }).isDisabled());
-    assert.ok(await page.getByLabel("Adjustment reason", { exact: true }).first().isDisabled()); assert.ok(await page.getByLabel("Photograph", { exact: true }).isDisabled()); assert.equal(attempts, 1);
+    assert.ok(await page.getByLabel("Adjustment reason", { exact: true }).first().isDisabled()); assert.ok(await page.getByLabel("Add Photographs", { exact: true }).isDisabled()); assert.equal(attempts, 1);
     await page.getByRole("button", { name: "Reload saved product", exact: true }).click(); await page.getByRole("status").filter({ hasText: "Current saved product loaded." }).waitFor();
-    assert.equal(await page.getByLabel("Product name", { exact: true }).inputValue(), oldName); assert.ok(await page.getByRole("button", { name: "Save changes", exact: true }).isEnabled()); assert.equal(attempts, 1);
+    assert.equal(await page.getByLabel("Jewelry Name", { exact: true }).inputValue(), oldName); assert.ok(await page.getByRole("button", { name: "Save changes", exact: true }).isEnabled()); assert.equal(attempts, 1);
   } finally { await c.close(); }
 });
 
@@ -168,8 +178,8 @@ test("post-commit product authentication failures lock mutations until read-only
       assert.equal((await fixture.data.query("SELECT description FROM products WHERE id=$1", [id(102)])).rows[0].description, description);
       for (const label of ["Save changes", "Unpublish", "Archive"]) assert.ok(await page.getByRole("button", { name: label, exact: true }).isDisabled());
       assert.ok(await page.getByLabel("Adjustment reason", { exact: true }).first().isDisabled());
-      assert.ok(await page.getByLabel("Photograph", { exact: true }).isDisabled());
-      assert.ok(await page.getByLabel("Product name", { exact: true }).isEnabled());
+      assert.ok(await page.getByLabel("Add Photographs", { exact: true }).isDisabled());
+      assert.ok(await page.getByLabel("Jewelry Name", { exact: true }).isEnabled());
       await pause(100); assert.equal(attempts, 1);
       await page.getByRole("button", { name: "Reload saved product", exact: true }).click();
       await page.getByRole("status").filter({ hasText: "Current saved product loaded." }).waitFor();
@@ -188,6 +198,7 @@ test("post-commit taxonomy authentication failures require a successful read-onl
       await signIn(page); await page.goto(origin + "/admin/taxonomy");
       await page.getByLabel("Choose category", { exact: true }).selectOption(id(3));
       const group = page.getByRole("group", { name: "Edit category", exact: true });
+      await group.locator("summary").click();
       const description = "Local committed category with denied projection " + status;
       await group.getByLabel("Description", { exact: true }).fill(description);
       await page.route(origin + "/api/admin/catalogue/taxonomy", async (route: { request(): { method(): string }; fetch(): Promise<{ status(): number }>; fulfill(value: unknown): Promise<void>; continue(): Promise<void> }) => {

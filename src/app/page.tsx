@@ -3,6 +3,8 @@ import Image from "next/image";
 import { BespokeProcessCarousel } from "@/components/BespokeProcessCarousel";
 import { HeroRingStage } from "@/components/HeroRingStage";
 import { SiteHeader } from "@/components/SiteHeader";
+import { connection } from "next/server";
+import { quotationOnly } from "../lib/commerce-policy.ts";
 
 const signaturePoints = [
   "Pendants shaped around personal meaning",
@@ -30,10 +32,11 @@ const trustItems = [
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  await connection();
   return (
     <main className="luxury-page">
-      <SiteHeader />
+      <SiteHeader quotationOnly={quotationOnly()} />
 
       <section className="hero-section" aria-labelledby="hero-title">
         <div className="hero-bg-wrap" aria-hidden="true">
@@ -103,8 +106,8 @@ export default function Home() {
           </HeroRingStage>
 
           <div className="hero-actions hero-text-reveal hero-text-reveal--4">
-            <a href="#appointment" className="hero-cta hero-primary-button">
-              Book a Private Appointment
+            <a href="/appointment" className="hero-cta hero-primary-button">
+              Consult the Designer
             </a>
             <a href="#catalog" className="hero-cta hero-secondary-button">
               Explore the Catalog
@@ -151,7 +154,7 @@ export default function Home() {
               ))}
             </ul>
 
-            <a href="#appointment" className="signature-cta">
+            <a href="/contact?intent=BESPOKE" className="signature-cta">
               Begin a Bespoke Piece
             </a>
           </div>
@@ -250,10 +253,10 @@ export default function Home() {
           </p>
           <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row sm:gap-4">
             <a
-              href="#appointment"
+              href="/appointment"
               className="cta-primary inline-flex min-h-12 items-center justify-center bg-gold px-6 text-xs font-semibold uppercase tracking-[0.14em] text-charcoal transition duration-300 hover:bg-ivory sm:px-7 sm:text-sm sm:tracking-[0.16em]"
             >
-              Book Appointment
+              Request a Consultation
             </a>
             <a
               href="#catalog"

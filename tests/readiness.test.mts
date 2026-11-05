@@ -1,3 +1,5 @@
+// Exercise retained direct-sales behavior; quotation-only denial has its own suites.
+process.env.COMMERCE_MODE = "DIRECT_SALES";
 import assert from 'node:assert/strict';
 import { after,before,test } from 'node:test';
 import { randomBytes,randomUUID } from 'node:crypto';
@@ -61,7 +63,7 @@ test('backup produces authenticated ciphertext and scrubs inherited libpq destin
 });
 test('encrypted backup restores to an empty isolated database with all migration checksums and paid order history',async()=>{
   const url=await target();await restoreLocalBackup(url,archive,secret,bin);const restored=new pg.Pool(databaseConfig(url));
-  try{const rows=(await restored.query('SELECT version,filename,checksum_sha256 FROM schema_migrations ORDER BY version')).rows;assert.equal(rows.length,12);assert.deepEqual(rows,(await f.data.query('SELECT version,filename,checksum_sha256 FROM schema_migrations ORDER BY version')).rows);assert.deepEqual(await runMigrations(url),[]);
+  try{const rows=(await restored.query('SELECT version,filename,checksum_sha256 FROM schema_migrations ORDER BY version')).rows;assert.equal(rows.length,13);assert.deepEqual(rows,(await f.data.query('SELECT version,filename,checksum_sha256 FROM schema_migrations ORDER BY version')).rows);assert.deepEqual(await runMigrations(url),[]);
     assert.deepEqual((await restored.query('SELECT id,payment_status,total_minor,fulfillment_status FROM orders ORDER BY id')).rows,(await f.data.query('SELECT id,payment_status,total_minor,fulfillment_status FROM orders ORDER BY id')).rows);
     assert.equal((await restored.query('SELECT count(*) FROM payment_events')).rows[0].count,(await f.data.query('SELECT count(*) FROM payment_events')).rows[0].count);
     await assert.rejects(restoreLocalBackup(url,archive,secret,bin),BackupError);

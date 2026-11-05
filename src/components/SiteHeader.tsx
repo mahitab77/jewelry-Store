@@ -6,7 +6,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { primaryNavigation } from "@/lib/navigation";
 import { CartBag } from "./cart/CartBag";
 
-export function SiteHeader() {
+export function SiteHeader({ quotationOnly = true }: { quotationOnly?: boolean }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
 
@@ -74,7 +74,7 @@ export function SiteHeader() {
         </div>
 
         <div className="relative flex shrink-0 items-center gap-2 sm:gap-3">
-          <CartBag />
+          {!quotationOnly ? <CartBag onNavigate={close} /> : null}
           <button
             type="button"
             className="nav-menu-button inline-flex h-11 w-11 flex-col items-center justify-center gap-[5px] rounded-md border border-[rgba(217,189,122,0.28)] bg-[rgba(255,250,240,0.06)] text-ivory transition hover:border-[rgba(217,189,122,0.45)] hover:bg-[rgba(255,250,240,0.1)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--gold)] lg:hidden"
@@ -102,8 +102,8 @@ export function SiteHeader() {
             className="navbar-cta inline-flex min-h-10 items-center justify-center px-3.5 text-[0.65rem] font-semibold uppercase tracking-[0.14em] sm:min-h-11 sm:px-5 sm:text-xs sm:tracking-[0.18em]"
             onClick={close}
           >
-            <span className="sm:hidden">Book</span>
-            <span className="hidden sm:inline">Book Appointment</span>
+            <span className="sm:hidden">Consult</span>
+            <span className="hidden sm:inline">Consult the Designer</span>
           </Link>
         </div>
       </nav>

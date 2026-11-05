@@ -28,6 +28,7 @@ export async function readEditor(headers: Headers, id: string, runtime: AdminRun
     const collections = await client.query("SELECT collection_id AS id FROM product_collections WHERE product_id=$1", [id]);
     const variants = await client.query(`SELECT v.id,v.sku,COALESCE(v.size_label,'') AS size,COALESCE(v.configuration_label,'') AS configuration,
         COALESCE(v.metal_type,'') AS "metalType",COALESCE(v.metal_purity,'') AS "metalPurity",COALESCE(v.metal_color,'') AS "metalColor",
+        COALESCE(v.metal_weight_grams::TEXT,'') AS "metalWeightGrams",COALESCE(v.metal_weight_basis,'') AS "metalWeightBasis",
         v.is_active AS active,v.display_order AS "displayOrder",p.amount_minor::TEXT AS "amountMinor",
         i.on_hand AS "onHand",COALESCE(i.reserved,0) AS reserved,COALESCE(i.on_hand-i.reserved,0) AS available,
         i.updated_at::TEXT AS "stockUpdatedAt" FROM product_variants v
@@ -46,7 +47,7 @@ export async function readEditor(headers: Headers, id: string, runtime: AdminRun
     const stonesByVariant = new Map<string, StoneInput[]>();
     for (const { variantId, ...stone } of stones.rows) { const group = stonesByVariant.get(variantId) ?? []; group.push(stone); stonesByVariant.set(variantId, group); }
     return { ...product, description: product.description ?? "", categoryIds: categories.rows.map((r) => r.id), collectionIds: collections.rows.map((r) => r.id),
-      variants: variants.rows.map((v) => ({ ...v, priceEGP: product.salesMode === "ENQUIRY_ONLY" ? "" : minorToEgp(v.amountMinor),
+      variants: variants.rows.map((v) => ({ ...v, priceEGP: minorToEgp(v.amountMinor),
         gemstones: stonesByVariant.get(v.id) ?? [] })) as EditorVariant[], media: media.rows } as EditorProduct;
   }, runtime);
 }

@@ -38,7 +38,7 @@ export default async function JewelPage({ params }: Props) {
           <p className={styles.eyebrow}>{productTypeLabel(product.productType)}</p><div className="gold-hairline mt-4" />
           <h1 id="jewel-title" className="font-display">{product.name}</h1>
           {product.description ? <p className={styles.description}>{product.description}</p> : null}
-          <JewelryOptions key={product.id} variants={product.variants} productType={product.productType} salesMode={product.salesMode} canEnquire={product.canEnquire} />
+          <JewelryOptions key={product.id} id={product.id} slug={product.slug} variants={product.variants} productType={product.productType} salesMode={product.salesMode} canEnquire={product.canEnquire} />
           {product.categories.length || product.collections.length ? <nav className={styles.associations} aria-label="More from this selection">
             {product.categories.map((category) => <Link key={category.id} href={`/collections/${category.slug}`}>{category.name}</Link>)}
             {product.collections.map((collection) => <Link key={collection.id} href={`/collections/edit/${collection.slug}`}>{collection.name}</Link>)}

@@ -1,5 +1,102 @@
 # PostgreSQL schema and catalogue access — Phases 01–02
 
+## Current local quotation-only implementation
+
+`src/lib/commerce-policy.ts` is the server-only authority. Missing/unknown
+`COMMERCE_MODE` means quotation-only; only exact `DIRECT_SALES` enables retained
+commerce behavior. Future activation requires a separately reviewed operation.
+There is no public flag or browser override. Stored sales modes, active prices,
+price history, stock, reservations and historical order amounts remain unchanged.
+Public projections suppress selling prices and purchase eligibility. Cart add/
+quantity changes, checkout preparation/review/save and payment initiation/retry/
+resume are blocked at service boundaries. Owned removal/draft deletion, historical
+reads, verified callbacks and reconciliation retain their existing controls. The
+global monetary formatter remains unchanged. Publication waives only selling price;
+description, visible category, active configuration and primary photograph gates
+remain. The current simplified editor preserves hidden private prices and all 39
+established mappings; two new metal fields bring the supported mapping count to 41.
+
+### Migration 0013: measurements and request context
+
+`0013_quotation_requests_specifications.sql` creates no tables and preserves all
+twelve previous migration checksums. `product_variants.metal_weight_grams` is
+`NUMERIC(10,3)`: exact grams to three decimal places (one milligram), positive and
+below 10,000,000 grams. This bound is validation, not an inferred weight or pricing
+rule. Paired `metal_weight_basis` is ACTUAL/ESTIMATED. Both may be NULL/unknown;
+neither may be supplied alone. Application decimal validation rejects rounding,
+zero and nonfinite input. Omitted legacy-update fields preserve existing values;
+explicit clearing removes both. Materials entry, save/reload and public detail
+display use these same columns. Gold karat purity and gemstone carat mass retain
+their existing separate meanings.
+
+The existing three request tables gain nullable `variant_id` and `product_context`.
+Composite foreign keys reference the existing variant/product unique key, plus
+checks require a product for any variant. Partial child indexes cover supplied
+variants. Appointments gain explicit ZOOM/BOUTIQUE `consultation_channel` and
+destination checks. Existing rows retain unknown NULLs; a legacy unknown channel
+cannot be silently confirmed.
+
+References alone cannot preserve specifications after catalogue edits. Each new
+product-linked request therefore stores one bounded server-generated context object
+in its own row: original name/slug, SKU/configuration, known metal measurement and
+public gemstone specifications. The 64-KiB JSON object excludes prices, private
+reports/provenance, contacts and provider URLs. It does not archive photographs or
+freeze descriptions. This documented business snapshot is displayed in the inbox;
+audit logs are not hidden snapshot storage. Runtime grants prohibit its mutation.
+
+### Guest requests and operations
+
+One shared form posts to `/api/requests`. QUOTATION uses `product_enquiries`;
+MODIFICATION/BESPOKE use `bespoke_requests` with/without a product; CONSULTATION uses
+only `appointment_requests`. Exactly one primary record and sanitized receipt audit
+commit atomically. No customer account/profile/cart is required. Published
+out-of-stock pieces may receive requests; unpublished/inactive/foreign selections
+are rejected. Zoom requires email; other requests need at least one valid contact.
+
+A random v4 submission UUID uses the existing primary key. A transaction advisory
+lock serializes the UUID across all three tables. Identical normalized immutable
+submissions return the same receipt; changed kind/payload conflicts. Receipt
+recovery precedes current catalogue/date checks. Unknown outcomes retain the frozen
+payload/reference for explicit identical retry with a 20-second client deadline.
+No automatic mutation retry or anonymous request-status lookup is provided.
+Distributed global/contact throttles reuse `cart_rate_limits`; purpose-separated
+HMAC keys contain no raw contact data. Counters commit outside request transactions.
+
+`/admin/requests` unifies existing entities with pagination, filters, a new count
+and explicit refresh. Page/API/repository require `operations:manage`; transactions
+recheck the enabled actor. CATALOGUE_MANAGER remains excluded. Existing domain
+statuses, assignments and microsecond revisions are preserved. Staff-confirmed
+arrangements require explicit agreement, Cairo time, Zoom email or an active
+verified boutique location. Rescheduling retains the original preference and
+audits before/after confirmation/assignment values. Staff sends invitations or
+boutique details manually; no notification or calendar provider is configured.
+All entered times are Africa/Cairo, converted independently of host/browser zone;
+invalid dates and DST gaps/ambiguity are rejected.
+
+Personal data (name, supplied contact, message and appointment arrangements) stays
+in the relevant request table for authorized operations staff. Public receipts omit
+it. Responses are private/no-store; contacts/messages never enter URLs, logs or
+audit metadata. The inbox clears protected data after access denial/page hiding and
+requires a fresh authorized read. Customer attachments are deferred.
+
+No automatic request retention period is invented. Client approval is required for
+retention/replay periods and any bounded deletion procedure. Respect linked
+appointment/bespoke dependencies, retain non-PII audit evidence, and account for
+deletion ending durable deduplication. No ordinary runtime DELETE is granted.
+Launch also requires a named operations employee, verified outbound contact and
+appointment-handling responsibility.
+
+`infra/neon/staging-request-grants.review.sql` is a future separately approved
+operation: exact staging target, PostgreSQL 18.6, thirteen checksums and the existing
+restricted role. It adds request SELECT and column-specific INSERT/UPDATE only;
+no role creation, DELETE, DDL, ledger or financial privileges. Hosted migration/
+grants have not been applied. Historical role artifacts remain byte-identical;
+tests rehearse their exact twelve-row baseline before upgrading locally.
+Cloudinary mocks verify local behavior only; live configuration and upload/delivery/
+cleanup remain separately authorized work. No second media system is introduced.
+
+## Historical Phase 01–02 baseline
+
 Neon PostgreSQL Free is the intended provider; no hosted database was contacted. Phase 01 established the schema below. Phase 02 adds a server-only `pg` connection module, read-only catalogue repository, local migration/seed tooling and database tests. No ORM, public API, authentication, checkout, payment integration or UI change is included. SQL uses standard PostgreSQL facilities, UUID keys with built-in `gen_random_uuid()`, exact `NUMERIC(12,4)` gemstone weights, `BIGINT` minor-unit money, and `TIMESTAMPTZ`. No extensions are required. Execution validation used PostgreSQL 17.10.
 
 Statuses use `TEXT` with named `CHECK` constraints rather than enums so later changes can use ordinary additive migrations without enum-specific deployment steps. Currency codes use three uppercase letters, defaulting to `EGP`; later services must validate supported currencies and their minor-unit exponents. For EGP, 100 minor units = EGP 1.00. Prices in different currencies are independent amounts, not automatic conversions.
@@ -604,13 +701,15 @@ No migration or checksum changes were made. The shared media-cleanup domain oper
 
 ## Product-management field audit — local PostgreSQL 18.6
 
-The editor has **39 editable/input or ordering-control field types**: seven product,
-eleven variant, fourteen gemstone, two stock-adjustment and five photograph
-controls. Repeated variants/stones repeat these controls; generated identifiers,
+The editor preserves **39 established editable/input or ordering-control field
+types** and adds two structured metal fields: **39 + 2 = 41 mappings**. These are
+seven product, thirteen variant, fourteen gemstone, two stock-adjustment and five
+photograph controls. Repeated variants/stones repeat these controls; generated identifiers,
 revisions, counters and publication commands are not extra editable columns.
-The new grouping manager adds eleven business fields and two record selectors.
-All twelve historical migrations remain authoritative and unchanged. No new
-schema column or migration is needed for these corrections.
+The grouping manager retains eleven business fields and two record selectors.
+All twelve historical migrations remain unchanged. Additive migration `0013`
+provides the two nullable variant metal columns; it does not replace any existing
+product, gemstone, inventory or price mapping.
 
 The matrix below records the UI component/input/required status, both validation
 layers, table/column or derived relationship, transformation, save operation,
@@ -642,42 +741,45 @@ operation codes avoid repeating the same transaction/reader in every row:
   **V3**: tests/v3-admin.browser.mts and tests/v3-admin-validation.test.mts cover
   unsaved changes, contextual field errors, bounded saves, uncertain-outcome
   recovery and all four narrow/wide viewport sizes.
+  **QP**: tests/quotation-policy.test.mts; **QPB**:
+  tests/quotation-products.browser.mts cover quotation-only price preservation,
+  price-free publication, exact metal measurements and editor/public round trips.
 - **CORRECT** describes the final mapping. Initial broken/missing behavior is
   recorded separately below. “No HTML rule” does not bypass authoritative server
   validation. Native required, length, integer bounds and decimal-keyboard hints now guide entry; the server remains authoritative. Validation errors can add a stable product/variant/gemstone field path without changing their existing safe message or database destination.
 
-### ProductEditor: complete 39-field matrix
+### ProductEditor: complete 41-field matrix (39 established + 2 metal fields)
 
 Pre-v3 changes preserve every destination below. Product and taxonomy saves now
 use a 20-second client deadline and never retry automatically. A timeout/network
 failure leaves local edits available while blocking further mutations until the
 saved state is inspected. Existing products/groupings support an explicit
 authenticated no-store reload; an uncertain new product links to catalogue search
-for the original submitted slug. Taxonomy forms retain independent loaded
+for the original submitted slug or, when generated automatically, the submitted name. Taxonomy forms retain independent loaded
 revisions and drafts, prompt before discarding changes, and protect link/browser
 closure navigation where supported. Known validation/conflict rejections retain
 the draft for correction without treating it as a successful save.
 
 | # | UI label / component | Input and requirement | Client validation | Server validation / transformation | Destination and database constraint | Save → reload → display; coverage / class |
 | ---: | --- | --- | --- | --- | --- | --- |
-| 1 | Product name / ProductEditor | Text; required | required; maxLength=200; stable accessible name | Trim; nonblank; ≤200 | products.name; nonblank CHECK | P → name → editor, list, detail, metadata; PM/CA; CORRECT |
-| 2 | URL slug / ProductEditor | Text; required | required; maxLength=160; read-only after first publication | Trim; lowercase hyphenated ASCII; ≤160; retain published URL | products.slug; UNIQUE + slug CHECK | P → slug; slugLocked derives from published_at → routes/canonical metadata; PM/CA; CORRECT |
+| 1 | Jewelry Name / ProductEditor | Text; required | required; maxLength=200; stable accessible name | Trim; nonblank; ≤200 | products.name; nonblank CHECK | P → name → editor, list, detail, metadata; PM/CA; CORRECT |
+| 2 | URL slug / ProductEditor Technical details | Text; optional override | maxLength=160; read-only after first publication | Blank new value generates normalized unique name-based slug under allocation lock; blank existing value preserves URL; manual lowercase hyphenated ASCII ≤160; retain published URL | products.slug; UNIQUE + slug CHECK | P → slug; slugLocked derives from published_at → routes/canonical metadata; PM/CA; CORRECT |
 | 3 | Product type / ProductEditor | Select; required | Enum options; disabled after stored variants exist | Enum; bespoke/one-of-kind rules; type immutable under variants | products.product_type; CHECK and discriminator FKs to variants/inventory | P → productType → editor/public type; PM/CA; CORRECT |
-| 4 | Sales mode / ProductEditor | Select; required | Enum options | Enum; bespoke enquiry-only; enquiry-only prices cleared | products.sales_mode; CHECK including bespoke relation | P → salesMode → price/enquiry/purchase eligibility; PM/CA; CORRECT |
-| 5 | Description / ProductEditor | Textarea; optional | maxLength=10,000; stable explicit accessible name; associated server error | Trim; ≤10,000; blank → NULL | products.description TEXT | P → NULL becomes empty string → editor/public description; PM; CORRECT |
-| 6 | Categories / ProductEditor | Checkbox UUID list; optional draft, required visible assignment to publish | Existing choices; effective hidden-ancestor labels | ≤30 unique UUIDs; every reference exists; publication needs a rooted visible category | product_categories.category_id/product_id; FKs + unique assignment | P → categoryIds → checked choices/eligible public category links; PM/CA/TX; CORRECT after management/choice fixes |
-| 7 | Collections / ProductEditor | Checkbox UUID list; optional | Existing choices and status labels | ≤30 unique UUIDs; every reference exists | product_collections.collection_id/product_id; FKs + unique assignment | P → collectionIds → checked choices; public association requires published/time-eligible collection; PM/CA/TX; CORRECT after management/choice fixes |
-| 8 | SKU / ProductEditor variant | Text; required | required; maxLength=80 | Trim; ≤80; uppercase letters/digits/dot/underscore/hyphen; product ownership | product_variants.sku; UNIQUE + regex CHECK | P → sku → editor/list/public Reference; PM/CA; CORRECT |
+| 4 | Sales mode / ProductEditor | Advanced select; required stored value | Enum options; quotation-only policy remains authoritative | Enum; bespoke enquiry-only; quotation mode preserves original modes and private prices; direct-sales mode rejects prices on enquiry-only submissions | products.sales_mode; CHECK including bespoke relation | P → original salesMode → editor; quotation policy exposes effective enquiry semantics publicly without changing the stored mode; PM/CA/QP; CORRECT |
+| 5 | Description / ProductEditor basic form | Textarea; optional draft, required publication | maxLength=10,000; guidance and associated server error; immediately follows name/category | Trim; ≤10,000; blank draft → NULL; publication requires ≥20 characters and a Unicode letter | products.description TEXT | P → NULL becomes empty string → editor/public multiline description; PM; CORRECT |
+| 6 | Jewelry Category / ProductEditor | Basic select plus advanced checkbox UUID list; optional draft, visible assignment required to publish | Existing choices; effective hidden-ancestor labels; basic edits retain additional assignments | ≤30 unique UUIDs; every reference exists; publication needs a rooted visible category | product_categories.category_id/product_id; FKs + unique assignment | P → categoryIds → selected/checked choices/eligible public category links; PM/CA/TX; CORRECT |
+| 7 | Collection (optional) / ProductEditor | Basic select plus advanced checkbox UUID list; optional | Existing choices and status labels; basic edits retain additional assignments | ≤30 unique UUIDs; every reference exists | product_collections.collection_id/product_id; FKs + unique assignment | P → collectionIds → selected/checked choices; public association requires published/time-eligible collection; PM/CA/TX; CORRECT |
+| 8 | SKU / ProductEditor Technical details | Text; optional override | maxLength=80 | Blank new SKU generates LPD- plus 96 random bits under allocation lock; blank existing SKU preserves reference; manual uppercase letters/digits/dot/underscore/hyphen ≤80; product ownership | product_variants.sku; UNIQUE + regex CHECK | P → sku → editor/list/public Reference; PM/CA; CORRECT |
 | 9 | Size / ProductEditor variant | Text; optional | maxLength=100 | Trim; ≤100; blank → NULL | product_variants.size_label; nullable/nonblank CHECK | P → NULL becomes empty → option label/specification; PM/CA; CORRECT |
 | 10 | Configuration / ProductEditor variant | Text; optional | maxLength=250 | Trim; ≤250; blank → NULL; active configuration tuple unique in submission | product_variants.configuration_label | P → empty/string → option label/specification; PM/CA; CORRECT |
 | 11 | Metal / ProductEditor variant | Text; optional | maxLength=160 | Trim; ≤160; blank → NULL | product_variants.metal_type | P → empty/string → metal specification; PM; CORRECT |
-| 12 | Metal purity / ProductEditor variant | Text; optional | maxLength=160 | Trim; ≤160; blank → NULL | product_variants.metal_purity | P → empty/string → metal line when metal exists; PM; CORRECT |
-| 13 | Metal colour / ProductEditor variant | Text; optional | maxLength=160 | Trim; ≤160; blank → NULL | product_variants.metal_color | P → empty/string → metal line when metal exists; PM; CORRECT |
-| 14 | Selling price (EGP) / ProductEditor variant | Text; required for published active direct-purchase variants | Decimal keyboard; maxLength=24; field-specific server error and focus; no floating conversion | Exact decimal, ≤2 places, signed BIGINT bound; BigInt ×100; blank removes active EGP price | product_prices.amount_minor/currency/is_active; ≥0; unique active variant/currency | P deactivates old price/appends new → exact two-place string → editor/public price; PM/CA; CORRECT |
+| 12 | Metal purity / ProductEditor Materials and gemstones | Text; optional | maxLength=160 | Trim; ≤160; blank → NULL; purity text such as 18K is distinct from gemstone carat weight and metal grams | product_variants.metal_purity | P → empty/string → public metal line even if metal type is unknown; PM/QPB; CORRECT |
+| 13 | Metal colour / ProductEditor Materials and gemstones | Text; optional | maxLength=160 | Trim; ≤160; blank → NULL | product_variants.metal_color | P → empty/string → public metal line even if metal type is unknown; PM/QPB; CORRECT |
+| 14 | Price (EGP) / Selling price (EGP) / ProductEditor | Text; optional private price in quotation mode; omitted from the ordinary quotation form and retained under Additional Details; required for published active direct-purchase variants only when direct sales are explicitly enabled | Decimal keyboard; maxLength=24; field-specific server error and focus; no floating conversion | Exact decimal, ≤2 places, signed BIGINT bound; BigInt ×100; hidden fields round-trip unchanged; explicit blank deactivates the active price | product_prices.amount_minor/currency/is_active; ≥0; unique active variant/currency | P preserves unchanged active rows/history; intentional price changes deactivate old price/append new → exact two-place private editor string; quotation public projections always return Price on Request with no amount; PM/CA/QP/QPB; CORRECT |
 | 15 | Variant display order / ProductEditor | Number; required | required; step=1; min=0; max=10,000 | Integer 0–10,000 | product_variants.display_order; nonnegative CHECK | P → displayOrder → sorted editor/public variants; PM; CORRECT |
 | 16 | Active variant / ProductEditor | Checkbox; required | Boolean state | Strict boolean; distinct active configurations | product_variants.is_active NOT NULL | P → active → inactive rows retained, public variants exclude them; PM/CA; CORRECT |
-| 17 | Initial stock / ProductEditor new variant | Number; required/default zero | required; step=1; min=0; max=1,000,000 | Integer 0–1,000,000; one-of-kind or any INDIVIDUAL stone ≤1; bespoke=0; forbidden on existing variant | inventory.on_hand/product_type; nonnegative, reserved≤on_hand and type CHECKs; individual-stone cap enforced by transactional service | P creates inventory → read-only onHand afterward; PM/CA/IS; CORRECT |
-| 18 | Initial stock reason / ProductEditor new variant | Text; required for positive stock | required when initial stock is positive; maxLength=240 | Trim; ≤240; positive stock requires reason; empty zero-stock reason gets explicit fallback | audit_events.metadata.reason, CATALOGUE_INVENTORY_INITIALISED | P → change history, not a duplicate inventory column; initialization input disappears after save; PM/CA; CORRECT |
+| 17 | Available Pieces / Initial stock / ProductEditor | Number; optional operational count for tracked products; blank draft means zero; not a quotation-publication requirement | step=1; min=0; max=1,000,000 or unique-piece remaining cap; unique total includes reserved pieces | Integer 0–1,000,000; one-of-kind or any INDIVIDUAL stone ≤1; bespoke=0; initialStock forbidden on existing variant; existing target means unreserved available pieces, with reservations preserved | inventory.on_hand/product_type; nonnegative, reserved≤on_hand and type CHECKs; individual-stone cap enforced transactionally | P initializes inventory; existing basic edits use I with revision and expected on-hand/reserved snapshot; zero stock permits enquiries and publication; customer requests never reserve stock; PM/CA/IS/QP; CORRECT |
+| 18 | Initial stock reason / ProductEditor Pricing and inventory | Text; automatic factual reason for basic entry, advanced override | maxLength=240 | Trim; ≤240; positive stock requires reason; empty zero-stock reason gets explicit fallback | audit_events.metadata.reason, CATALOGUE_INVENTORY_INITIALISED | P → change history, not a duplicate inventory column; initialization input disappears after save; PM/CA; CORRECT |
 | 19 | Stone type / ProductEditor gemstone | Text; required | required; maxLength=100 | Trim; nonblank; ≤100 | gemstones.stone_type; nonblank CHECK | G → type → editor/public stone heading; PM/CA; CORRECT |
 | 20 | Variety / ProductEditor gemstone | Text; optional | maxLength=160 | Trim; ≤160; blank → NULL | gemstones.variety | G → empty/string → editor/public stone heading; PM; CORRECT |
 | 21 | Shape / cut / ProductEditor gemstone | Text; required | required; maxLength=100 | Trim; nonblank; ≤100 | gemstones.shape; nonblank CHECK | G → shape → editor/public specification; PM; CORRECT |
@@ -694,16 +796,84 @@ the draft for correction without treating it as a successful save.
 | 32 | Gemstone display order / ProductEditor | Number; required | required; step=1; min=0; max=10,000 | Integer 0–10,000 | product_gemstones.display_order; nonnegative CHECK | G → displayOrder → ordered editor/public stones; PM; CORRECT |
 | 33 | Adjustment (+/− units) / ProductEditor inventory | Number command; required | required; step=1 | Integer −1M..1M, nonzero; resulting stock nonnegative, ≥reserved, ≤1M; one-of-kind or any INDIVIDUAL stone≤1; bespoke forbidden | Delta changes inventory.on_hand; before/after/delta also audited | I → command clears, counters/revision reload → availability; PM/CA/IS; CORRECT |
 | 34 | Adjustment reason / ProductEditor inventory | Text command; required | required; maxLength=240 | Trim; nonblank; ≤240 | audit_events.metadata.reason, CATALOGUE_INVENTORY_ADJUSTED | I → history; input resets after success; PM/CA; CORRECT |
-| 35 | Photograph / ProductEditor upload | File; required | required; JPEG/PNG/WebP accept list | Decode/validate MIME, bytes, dimensions, pixels, animation; orient/re-encode/strip metadata; verify provider response | product_media reference/provider metadata + catalogue_media_jobs; media metadata CHECKs | U → file input resets; saved image/reference reload in preview; original filename/bytes need no DB column; PM/CA; CORRECT |
-| 36 | Photograph description (upload alt) / ProductEditor | Text; required | required; minLength=5; maxLength=250 | Trim; 5–250 characters | product_media.alt_text; application strengthens nullable schema | U → altText → editor/image alternate text/public image; PM/CA; CORRECT |
+| 35 | Add Photographs / ProductEditor | Multiple device files; supported primary image required to publish | JPEG/PNG/WebP accept list; local previews; upload only after confirmed product ID | Decode/validate MIME, bytes, dimensions, pixels, animation; orient/re-encode/strip metadata; verify provider response | product_media reference/provider metadata + catalogue_media_jobs; media metadata CHECKs | U → saved image/reference reload in preview; local object URLs revoked; original filename/bytes need no DB column; PM/CA; CORRECT |
+| 36 | Photograph description (optional) / ProductEditor | Text; optional override | maxLength=250; blank uses saved jewelry name and photograph ordinal | Trim; 5–250 characters remains required at upload boundary | product_media.alt_text; application strengthens nullable schema | U → altText → editor/image alternate text/public image; PM/CA; CORRECT |
 | 37 | Alt text for photograph N / ProductEditor | Text; required for saved arrangement | No HTML rule | Trim; 5–250 characters | Same product_media.alt_text | A → altText → editor/public image; PM/CA; CORRECT |
 | 38 | Primary photograph N / ProductEditor | Radio; exactly one when images exist | Shared radio group/boolean state | Strict boolean; exact one primary; published selected reference must remain supported | product_media.is_primary; image-only CHECK + unique partial index | A → primary → card and detail hero independently of display order; PM/MP; CORRECT after corrections |
 | 39 | Move photograph N up/down / ProductEditor | Ordering buttons | Boundary controls disabled | Exact current-image permutation; no duplicate/foreign IDs; revision required; indexes become order | product_media.display_order; nonnegative CHECK | A → ordered media → editor/gallery thumbnails; PM/CA; CORRECT |
+| 40 | Metal weight (grams) / ProductEditor Materials and gemstones | Text with decimal keyboard; optional, paired with measurement basis | maxLength=20; associated field error; invalid collapsed section opens and focuses this input | Exact positive decimal below 10,000,000 grams; ≤3 places; normalize with string/BigInt operations to three places, never floating point; reject zero, exponent notation, NaN and Infinity; omitted legacy-update pair preserves stored values; explicit empty pair means unknown | product_variants.metal_weight_grams NUMERIC(10,3); one milligram precision; nullable paired positive/bounded CHECK from 0013 | P → exact string or NULL → readEditor empty/three-place string → editor and public gram specification; no inferred weight or price calculation; QP/QPB; CORRECT |
+| 41 | Metal weight basis / ProductEditor Materials and gemstones | Select; optional only when grams are unknown, otherwise required | Unknown / not recorded, Actual measurement, Estimated weight; associated server error and focus | Empty, ACTUAL or ESTIMATED; grams and basis must both be supplied or both unknown; omitted legacy-update pair preserves existing data | product_variants.metal_weight_basis TEXT; nullable paired CHECK restricts basis to ACTUAL/ESTIMATED whenever weight is recorded | P → NULL/enum → readEditor empty/enum → editor selection and public actual/estimated label; QP/QPB; CORRECT |
+
+### Simplified entry and retained advanced controls
+
+Normal new jewelry retains its repeatable, underlying DIRECT_PURCHASE draft mode
+and one default configuration. The safe store-wide quotation policy overrides
+purchasing without rewriting that stored mode. The ordinary quotation form shows
+Jewelry Name, Jewelry Category, Description and Photographs, plus optional
+Collection and an operational Available Pieces count where stock is tracked.
+With that count visible, the initial quotation form has six input controls
+including Collection and the file picker; it has no ordinary selling-price
+control. The earlier simplified direct-sales form had seven controls, compared
+with the original 11 initially visible controls (22 after manually adding a
+configuration in the same fixture). All 39 established field types and the two
+new metal fields remain available, giving 41 mappings. Materials and gemstones, Sizes and
+variants, Pricing and inventory, Publication and visibility, and Technical details
+are independent disclosures; closing one retains its values. Invalid fields open
+their disclosure and receive focus.
+
+Only a name is needed for an incomplete draft. Publishing still requires a
+meaningful description, visible rooted category, valid active configuration and
+eligible primary photograph. Quotation-only publication requires no selling
+price or positive stock; unchanged private prices stay active and retain their
+history. Direct-sales reactivation still requires active EGP prices and eligible
+stock before a piece can be purchased; an unpriced or zero-stock piece does not
+become purchasable merely because policy changes. Publication can retain zero stock;
+one-of-a-kind and individual-stone configurations remain limited to one total unit,
+including reservations. Multiple configurations retain separate prices and stock.
+Bespoke stock stays zero. The optional exact gram measurement and ACTUAL/ESTIMATED
+basis record known material information; purity text remains separate from grams
+and gemstone carats. No positive quantity, specification or editorial claim is generated.
+
+Blank new slugs are normalized from names and allocated with collision suffixes.
+Blank new SKUs use `LPD-` plus 96 random bits. Shared transaction locking serializes
+application allocations and database UNIQUE constraints remain authoritative.
+Existing references survive ordinary name edits; published URL locks remain.
+Optional `entryMode: "basic"` creates one default configuration only when a basic
+submission has none; existing configurations cannot be discarded through that path.
+Stock commands include the loaded product revision and on-hand/reserved snapshot.
+An explicit null on-hand snapshot requires missing inventory; atomic initialization
+rejects a row created since that read. Older delta/reason commands remain supported.
+
+New category and collection forms initially show only Name. Advanced fields retain
+the destinations below. New categories default visible with display order zero;
+new collections default DRAFT with display order zero. Neither action changes
+existing records or automatically publishes a collection. Unknown creation outcomes
+require an explicit read and an unambiguous new-record match before unlocking.
+
+Device photographs can be selected and previewed before saving. No upload occurs
+until a successful create response confirms the product ID. The editor then keeps
+the saved edit URL and uploads the queue through the existing authorized endpoint.
+Known failures retain remaining local files; uncertain outcomes require saved-state
+inspection and never trigger automatic mutation retries. Local provider mocks test
+selection, arrangement, primary selection and failures; live Cloudinary is not
+configured or verified by these tests.
+
+New coverage: `tests/admin-simplification.test.mts`,
+`tests/admin-product-entry.browser.mts` and
+`tests/admin-taxonomy-entry.browser.mts`. Existing catalogue and v3 browser suites
+retain their advanced-field, authorization, inventory and failure assertions.
+
+Local verification on 2026-11-04 passed **296 PostgreSQL 18.6 integration tests,
+six transport security tests and 98 browser cases** (400 total, including 32 new
+cases). Lint, `npx tsc --noEmit` and the production build passed. Basic and advanced
+forms were verified at 320, 768, 1024 and 1440 pixels. Public source/assets,
+migrations and approved privilege artifacts remain unchanged. Live provider
+configuration and deployment remain separate operator-authorized work.
 
 ### Publication commands and intentionally derived fields
 
 Save/Publish/Unpublish/Archive update products.status inside P. Publication requires
-a rooted visible category, an active variant, eligible inventory, active EGP
+a meaningful description, a rooted visible category, an active variant, eligible inventory, active EGP
 prices for active direct-purchase variants, and a supported primary photograph
 with descriptive alt text. Unpublish/archive retain published_at for URL stability;
 archive retains product, variant and financial references. There is no physical
@@ -729,13 +899,13 @@ Parent changes are serialized by an advisory transaction lock; no DELETE exists.
 | UI field / scope | Input / required / client checks | Server validation / transformation | Database / constraint | Save / reload / display / coverage / class |
 | --- | --- | --- | --- | --- |
 | Name / category | Text, required, max 200 | Trim, nonblank, ≤200 | categories.name; nonblank | T → name → form/product choices/public category; PM/TX; CORRECT |
-| URL slug / category | Text, required, max 160, hyphen pattern, read-only after creation | Same pattern; immutable after creation | categories.slug; UNIQUE + CHECK | T → slug → form/category URL; PM/TX; CORRECT |
+| URL slug / category | Advanced optional override, max 160, hyphen pattern, read-only after creation | Blank new value allocates unique normalized name-based slug; same pattern; immutable after creation | categories.slug; UNIQUE + CHECK | T → slug → form/category URL; PM/TX; CORRECT |
 | Description / category | Textarea, optional, max 10,000, explicit name | Trim; blank → NULL | categories.description | T → empty/string → form/public category; PM/TX; CORRECT |
 | Parent category | Select UUID or no parent; optional, explicit name | Existing UUID; reject self/cycles/unrooted chain; visible child needs visible ancestors | categories.parent_id; FK RESTRICT + not-own-parent CHECK | T → parentId → form/public rooted tree; PM/TX; CORRECT |
 | Display order / category | Number, required, integer 0–10,000 | Same integer bounds | categories.display_order; ≥0 | T → displayOrder → sorted lists; PM/TX; CORRECT |
-| Visible category | Checkbox boolean; default false | Strict boolean + ancestor rules | categories.is_visible | T → visible → public navigation/filters; PM/TX; CORRECT |
+| Visible category | Advanced checkbox boolean; new category defaults true | Strict boolean + ancestor rules; explicit false and existing records preserved | categories.is_visible | T → visible → public navigation/filters; PM/TX; CORRECT |
 | Name / collection | Text, required, max 200 | Trim, nonblank, ≤200 | collections.name; nonblank | T → name → form/product choices/public collection; PM/TX; CORRECT |
-| URL slug / collection | Text, required, max 160, pattern; read-only after publication | Pattern; immutable once published_at exists | collections.slug; UNIQUE + CHECK | T → slug/slugLocked → collection URL; PM/TX; CORRECT |
+| URL slug / collection | Advanced optional override, max 160, pattern; read-only after publication | Blank new value allocates unique normalized name-based slug; pattern; immutable once published_at exists | collections.slug; UNIQUE + CHECK | T → slug/slugLocked → collection URL; PM/TX; CORRECT |
 | Description / collection | Textarea, optional, max 10,000, explicit name | Trim; blank → NULL | collections.description | T → empty/string → form/public collection; PM/TX; CORRECT |
 | Display order / collection | Number, required, integer 0–10,000 | Same integer bounds | collections.display_order; ≥0 | T → displayOrder → sorted lists; PM/TX; CORRECT |
 | Collection status | Enum select, required, explicit name | DRAFT/PUBLISHED/ARCHIVED; explicit publish transition sets current time; ordinary published edits retain schedule | collections.status/published_at; publication-date CHECK | T → status/slugLocked plus read-only publishedAt/publiclyVisible → form; published/time-eligible public projection; PM/TX; CORRECT |

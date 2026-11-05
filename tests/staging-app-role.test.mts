@@ -1,3 +1,5 @@
+// Exercise retained direct-sales behavior; quotation-only denial has its own suites.
+process.env.COMMERCE_MODE = "DIRECT_SALES";
 import assert from 'node:assert/strict';
 import { after,before,test } from 'node:test';
 import { randomBytes,randomUUID,createHash } from 'node:crypto';
@@ -12,6 +14,7 @@ import { product } from './helpers/catalogue-fixture.mts';
 import { paymentEnvironment,signedTransaction,transactionFixture } from './helpers/paymob-mock.mts';
 import { databaseConfig,isLoopback } from '../src/lib/db/config.ts';
 import { withDatabaseClient,closeDatabase } from '../src/lib/db/client.ts';
+import { runMigrations } from '../db/tools/migrate.ts';
 import { adminConfiguration } from '../src/lib/admin/config.ts';
 import { createAdminRuntime } from '../src/lib/admin/runtime.ts';
 import { handleAdminAuth } from '../src/lib/admin/http.ts';
@@ -51,7 +54,7 @@ before(async()=>{
   const c=databaseConfig(process.env.TEST_DATABASE_URL);
   assert.ok(process.env.TEST_DATABASE_URL&&isLoopback(c.host??'')&&process.env.NODE_ENV!=='production','Use an exclusive disposable loopback PostgreSQL18.6 cluster.');
   assert.equal(new Set([password,...Object.values(oldPasswords)]).size,7);
-  base=await orderFixture();root=await mkdtemp(join(tmpdir(),'lapalme-app-role-'));
+  base=await orderFixture(undefined,12);root=await mkdtemp(join(tmpdir(),'lapalme-app-role-'));
   // Model the already-provisioned six identities locally; never execute this on Neon.
   assert.equal((await plan(resolve('infra/neon/staging-runtime-roles.review.sql'))).status,0);sixCreated=true;
   oldSnapshot=await snapshotOld();
@@ -64,6 +67,8 @@ before(async()=>{
   assert.equal((await base.data.query('SELECT count(*)::int n FROM pg_roles WHERE rolname=$1',[app])).rows[0].n,0);rollbackVerified=true;
   assert.equal((await plan(resolve('infra/neon/staging-app-role.review.sql'))).status,0);appCreated=true;
   assert.ok(oldSnapshot===await snapshotOld(),'Existing six local identities and their credentials/grants must be unchanged.');
+  assert.equal((await base.data.query('SELECT count(*)::int n FROM schema_migrations')).rows[0].n,12);
+  assert.deepEqual(await runMigrations(base.ownerUrl),['0013_quotation_requests_specifications.sql']);
   const u=new URL(base.ownerUrl);u.username=app;u.password=password;url=u.toString();pool=new pg.Pool(databaseConfig(url));
   const values={DATABASE_URL:url,ADMIN_DATABASE_URL:url,CART_DATABASE_URL:url,PAYMENT_DATABASE_URL:url,MEDIA_CLEANUP_DATABASE_URL:url,
     BETTER_AUTH_URL:base.authConfig.baseURL,BETTER_AUTH_SECRET:base.authConfig.secret};
@@ -128,7 +133,7 @@ test('effective table and column privileges equal the exact combined scope, with
   const ts=await pool.query("SELECT c.relname t,p,has_table_privilege(current_user,c.oid,p) allowed,has_table_privilege(current_user,c.oid,p||' WITH GRANT OPTION') grantable FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN']) p WHERE n.nspname='public' AND c.relkind='r'");
   assert.equal(ts.rows.length,38*8);for(const r of ts.rows){assert.equal(r.allowed,tableGrants.get(r.t)?.has(r.p)??false,r.t+':'+r.p);assert.equal(r.grantable,false);}
   const cs=await pool.query("SELECT c.relname t,a.attname col,p,has_column_privilege(current_user,c.oid,a.attnum,p) allowed,has_column_privilege(current_user,c.oid,a.attnum,p||' WITH GRANT OPTION') grantable FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) p WHERE n.nspname='public' AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped");
-  assert.equal(cs.rows.length,419*4);for(const r of cs.rows){assert.equal(r.allowed,!!(tableGrants.get(r.t)?.has(r.p)||(r.p==='UPDATE'&&columnGrants.get(r.t)?.has(r.col))),r.t+':'+r.col+':'+r.p);assert.equal(r.grantable,false);}
+  assert.equal(cs.rows.length,428*4);for(const r of cs.rows){assert.equal(r.allowed,!!(tableGrants.get(r.t)?.has(r.p)||(r.p==='UPDATE'&&columnGrants.get(r.t)?.has(r.col))),r.t+':'+r.col+':'+r.p);assert.equal(r.grantable,false);}
 });
 test('DDL, role creation/escalation, ledger access and unrelated objects are denied by actual SQL',async()=>{
   for(const sql of ['CREATE TABLE public.app_forbidden(id integer)','ALTER TABLE public.products ADD COLUMN app_forbidden text','DROP TABLE public.products','CREATE SCHEMA app_forbidden','ALTER SCHEMA public RENAME TO app_forbidden','DROP SCHEMA public CASCADE','CREATE ROLE app_forbidden NOLOGIN','SET ROLE postgres',
@@ -186,6 +191,7 @@ test('all six prior identities, their grants and local credentials remain unchan
   assert.ok(oldSnapshot===await snapshotOld(),'Preserve every pre-existing role setting, credential verifier and effective grant.');
   assert.equal(createHash('sha256').update(await readFile('infra/neon/staging-runtime-roles.review.sql')).digest('hex'),'459692b229613cb0cf168d2ea05222ed6bad759d9c82cb40957cc30521d436ce');
   const manifest=JSON.parse(await readFile('infra/cloud-run/migrations.sha256.json','utf8')) as {filename:string;sha256:string}[];
-  assert.equal(manifest.length,12);for(const m of manifest)assert.equal(createHash('sha256').update(await readFile('db/migrations/'+m.filename)).digest('hex'),m.sha256);
+  assert.equal(manifest.length,13);const approved=await readFile('infra/neon/staging-app-role.review.sql','utf8');
+  for(const m of manifest.slice(0,12)){assert.ok(approved.includes("'"+m.filename+"','"+m.sha256+"'"));assert.equal(createHash('sha256').update(await readFile('db/migrations/'+m.filename)).digest('hex'),m.sha256);}
 });
 

@@ -58,5 +58,10 @@
     "version": "0012",
     "filename": "0012_order_fulfillment_administration.sql",
     "sha256": "58f305376b4fef84467fd0f409a73b0189a950af94278f1fbb46bf78d23cfda5"
+  },
+  {
+    "version": "0013",
+    "filename": "0013_quotation_requests_specifications.sql",
+    "sha256": "303dc46ec1bd1e432b3f64fe8a0265e09a088a2ef3d1a1b2ffa5555c4fb90a10"
   }
 ]

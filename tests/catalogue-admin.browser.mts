@@ -1,3 +1,5 @@
+// Exercise retained direct-sales behavior; quotation-only denial has its own suites.
+process.env.COMMERCE_MODE = "DIRECT_SALES";
 import assert from "node:assert/strict";
 import { before, beforeEach, test } from "node:test";
 import sharp from "sharp";
@@ -19,10 +21,16 @@ async function operation(page: Page, button: string, suffix: string) {
   assert.equal(result.status(), 200, `Operation ${button} should succeed.`);
   await page.getByRole("status").filter({ hasText: /saved|uploaded|removed|completed/i }).first().waitFor();
 }
+async function reveal(page: Page, name: string) {
+  const summary = page.locator("summary").filter({ hasText: name });
+  if (await summary.locator("..").getAttribute("open") === null) await summary.click();
+}
 async function upload(page: Page, alt: string) {
-  await page.getByLabel("Photograph", { exact: true }).setInputFiles({ name: "fixture.png", mimeType: "image/png", buffer: photo });
-  await page.getByLabel("Photograph description (alt text)", { exact: true }).fill(alt);
-  await operation(page, "Upload photograph", "/photos");
+  await page.getByLabel("Add Photographs", { exact: true }).setInputFiles({ name: "fixture.png", mimeType: "image/png", buffer: photo });
+  await reveal(page, "Photograph description (optional)");
+  await page.getByLabel("Description for selected photograph 1", { exact: true }).fill(alt);
+  await operation(page, "Upload selected photographs", "/photos");
+  await page.getByLabel("Description for selected photograph 1", { exact: true }).waitFor({ state: "detached" });
 }
 
 test("anonymous catalogue routes and mutation attempts are denied without writes", async () => {
@@ -54,25 +62,29 @@ test("desktop catalogue flow creates, edits, uploads, orders, publishes, adjusts
     assert.equal(await page.locator("table").count(), 1);
     await page.evaluate(() => document.fonts.ready); await screenshot(page, "catalogue-list-desktop");
     await page.getByRole("link", { name: "Create product", exact: true }).click(); await page.waitForURL(origin + "/admin/products/new");
-    await page.getByLabel("Product name", { exact: true }).fill("Browser catalogue fixture");
+    await page.getByLabel("Jewelry Name", { exact: true }).fill("Browser catalogue fixture");
+    await page.getByLabel("Description", { exact: true }).fill("Disposable catalogue browser fixture with synthetic details for local verification.");
+    await reveal(page, "Technical details");
     await page.getByLabel("URL slug", { exact: true }).fill("browser-catalogue-fixture");
+    await page.getByLabel("SKU", { exact: true }).fill("BROWSER-MANAGED-1");
+    await reveal(page, "Sizes and variants");
     await page.getByLabel("Product type", { exact: true }).selectOption("REPEATABLE");
     await page.getByLabel("Sales mode", { exact: true }).selectOption("BOTH");
-    await page.getByLabel("[DEVELOPMENT] Rings", { exact: true }).check();
-    await page.getByLabel("[DEVELOPMENT] Selections (published)", { exact: true }).check();
-    await page.getByRole("button", { name: "Add variant", exact: true }).click();
+    await page.getByLabel("Jewelry Category", { exact: true }).selectOption({ label: "[DEVELOPMENT] Rings" });
+    await page.getByLabel("Collection (optional)", { exact: true }).selectOption({ label: "[DEVELOPMENT] Selections (published)" });
     const variant = page.getByRole("group", { name: "Variant 1", exact: true });
-    await variant.getByLabel("SKU", { exact: true }).fill("BROWSER-MANAGED-1");
     await variant.getByLabel("Configuration", { exact: true }).fill("Standard");
-    await variant.getByLabel("Selling price (EGP)", { exact: true }).fill("1234.56");
-    await variant.getByLabel("Initial stock", { exact: true }).fill("2");
-    await variant.getByLabel("Initial stock reason", { exact: true }).fill("Two disposable browser fixture units");
-    await variant.getByRole("button", { name: "Add gemstone", exact: true }).click();
-    await variant.getByLabel("Stone type", { exact: true }).fill("Sapphire");
-    await variant.getByLabel("Shape / cut", { exact: true }).fill("Round");
-    await variant.getByLabel("Colour", { exact: true }).fill("Blue");
-    await variant.getByLabel("Carat weight", { exact: true }).fill("1.2345");
-    await page.getByRole("button", { name: "Create draft", exact: true }).click();
+    await page.getByLabel("Price (EGP)", { exact: true }).fill("1234.56");
+    await page.getByLabel("Available Pieces", { exact: true }).fill("2");
+    await reveal(page, "Pricing and inventory");
+    await page.getByLabel("Initial stock reason", { exact: true }).fill("Two disposable browser fixture units");
+    await reveal(page, "Materials and gemstones");
+    await page.getByRole("button", { name: "Add gemstone", exact: true }).click();
+    await page.getByLabel("Stone type", { exact: true }).fill("Sapphire");
+    await page.getByLabel("Shape / cut", { exact: true }).fill("Round");
+    await page.getByLabel("Colour", { exact: true }).fill("Blue");
+    await page.getByLabel("Carat weight", { exact: true }).fill("1.2345");
+    await page.getByRole("button", { name: "Save Draft", exact: true }).click();
     await page.waitForURL(/\/admin\/products\/[0-9a-f-]{36}\/edit$/);
     await page.getByRole("heading", { name: "Edit product", exact: true }).waitFor();
     const id = page.url().split("/").at(-2)!;
@@ -87,14 +99,16 @@ test("desktop catalogue flow creates, edits, uploads, orders, publishes, adjusts
     assert.equal((await publicPage.goto(origin + "/jewels/browser-catalogue-fixture", { waitUntil: "networkidle" })).status(), 200);
     assert.match(await publicPage.locator("main").innerText(), /1,234\.56/);
     assert.ok(await publicPage.locator('img[alt="Fixture ring side view"]').evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0));
-    await page.getByLabel("Selling price (EGP)", { exact: true }).fill("1500.07");
+    await page.getByLabel("Price (EGP)", { exact: true }).fill("1500.07");
     await operation(page, "Save changes", "/save");
-    await page.getByLabel("Adjustment (+/− units)", { exact: true }).fill("-1");
-    await page.getByLabel("Adjustment reason", { exact: true }).fill("Browser fixture inventory adjustment");
+    await reveal(page, "Detailed stock adjustments");
+    const stock = page.getByRole("heading", { name: "Inventory & availability", exact: true }).locator("..");
+    await stock.getByLabel("Adjustment (+/− units)", { exact: true }).fill("-1");
+    await stock.getByLabel("Adjustment reason", { exact: true }).fill("Browser fixture inventory adjustment");
     const stockResponse = page.waitForResponse((r: { url(): string; request(): { method(): string } }) => r.url().includes("/inventory/") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Apply stock adjustment for BROWSER-MANAGED-1", exact: true }).click(); assert.equal((await stockResponse).status(), 200);
     await publicPage.reload({ waitUntil: "networkidle" }); assert.match(await publicPage.locator("main").innerText(), /1,500\.07/);
-    await page.getByRole("heading", { name: "Product photographs", exact: true }).scrollIntoViewIfNeeded(); await screenshot(page, "catalogue-media-desktop");
+    await page.getByRole("heading", { name: "Photographs", exact: true }).scrollIntoViewIfNeeded(); await screenshot(page, "catalogue-media-desktop");
     await operation(page, "Unpublish", "/save");
     assert.equal((await publicPage.goto(origin + "/jewels/browser-catalogue-fixture")).status(), 404);
     await operation(page, "Archive", "/save");
@@ -110,20 +124,22 @@ test("mobile creation, stock state and error feedback remain accessible and uncl
   try {
     const page = await context.newPage(); page.on("dialog", (dialog: { accept(): Promise<void> }) => dialog.accept());
     await signIn(page); await page.goto(origin + "/admin/products/new", { waitUntil: "networkidle" });
-    await page.getByLabel("Product name", { exact: true }).fill("Mobile catalogue fixture");
+    await page.getByLabel("Jewelry Name", { exact: true }).fill("Mobile catalogue fixture");
+    await reveal(page, "Technical details");
     await page.getByLabel("URL slug", { exact: true }).fill("INVALID SLUG");
-    await page.getByRole("button", { name: "Create draft", exact: true }).click();
+    await page.getByRole("button", { name: "Save Draft", exact: true }).click();
     await page.locator("main").getByRole("alert").waitFor(); assert.match(await page.locator("main").getByRole("alert").innerText(), /slug/i);
     await page.getByLabel("URL slug", { exact: true }).fill("mobile-catalogue-fixture");
+    await reveal(page, "Sizes and variants");
     await page.getByLabel("Product type", { exact: true }).selectOption("BESPOKE");
-    await page.getByRole("button", { name: "Add variant", exact: true }).click();
     await page.getByLabel("SKU", { exact: true }).fill("MOBILE-BESPOKE-1");
-    await page.getByRole("button", { name: "Create draft", exact: true }).click(); await page.waitForURL(/\/admin\/products\/[0-9a-f-]{36}\/edit$/);
+    await page.getByRole("button", { name: "Save Draft", exact: true }).click(); await page.waitForURL(/\/admin\/products\/[0-9a-f-]{36}\/edit$/);
     await page.getByRole("heading", { name: "Edit product", exact: true }).waitFor();
     await page.evaluate(() => { window.scrollTo(0, 0); return document.fonts.ready; }); await screenshot(page, "catalogue-editor-mobile");
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await reveal(page, "Detailed stock adjustments");
     assert.ok(await page.getByRole("button", { name: "Apply stock adjustment for MOBILE-BESPOKE-1", exact: true }).isDisabled());
-    await page.getByRole("heading", { name: "Product photographs", exact: true }).scrollIntoViewIfNeeded(); await screenshot(page, "catalogue-media-mobile");
+    await page.getByRole("heading", { name: "Photographs", exact: true }).scrollIntoViewIfNeeded(); await screenshot(page, "catalogue-media-mobile");
     await page.getByRole("link", { name: "Product catalogue", exact: false }).click(); await page.waitForURL(origin + "/admin/products");
     await page.getByLabel("Search name, SKU or slug", { exact: true }).fill("MOBILE-BESPOKE-1");
     await page.getByRole("button", { name: "Filter products", exact: true }).click(); await page.waitForURL(/q=MOBILE-BESPOKE-1/);

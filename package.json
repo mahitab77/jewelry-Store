@@ -40,6 +40,10 @@
     "staging:prepare": "node --experimental-strip-types scripts/prepare-staging.mts",
     "test:staging": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/staging.test.mts",
     "test:runtime-roles": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/runtime-roles.test.mts",
+    "test:quotation": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/quotation-policy.test.mts",
+    "test:quotation:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/quotation-products.browser.mts",
+    "test:requests": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/requests.test.mts",
+    "test:requests:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/requests.browser.mts",
     "test:staging-app-role": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/staging-app-role.test.mts"
   },
   "dependencies": {

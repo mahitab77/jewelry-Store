@@ -7,12 +7,13 @@ import { formatEgp, variantOptionLabels } from "../../lib/catalogue/presentation
 import styles from "./catalogue.module.css";
 import { AddToCart } from "../cart/AddToCart";
 
-type Props = Pick<PublicProductDetail, "variants" | "productType" | "salesMode" | "canEnquire">;
-export function JewelryOptions({ variants, productType, salesMode, canEnquire }: Props) {
+type Props = Pick<PublicProductDetail, "id" | "slug" | "variants" | "productType" | "salesMode" | "canEnquire">;
+export function JewelryOptions({ slug, variants, productType, salesMode, canEnquire }: Props) {
   const [selectedId, setSelectedId] = useState(() => (variants.find((v) => v.canPurchase) ?? variants[0])?.id);
   const selected = variants.find((v) => v.id === selectedId);
   const labels = variantOptionLabels(variants);
   const enquiryOnly = productType === "BESPOKE" || salesMode === "ENQUIRY_ONLY";
+  const requestHref = (intent: "QUOTATION" | "MODIFICATION" | "CONSULTATION") => `${intent === "CONSULTATION" ? "/appointment" : "/contact"}?${new URLSearchParams({ intent, product: slug, ...(selected ? { variant: selected.id } : {}) }).toString()}`;
   const availability = enquiryOnly ? "By private enquiry" : selected?.availability === "OUT_OF_STOCK" ? "Currently unavailable"
     : selected?.canPurchase ? "Available to purchase" : "Availability on request";
   return <div>
@@ -31,13 +32,14 @@ export function JewelryOptions({ variants, productType, salesMode, canEnquire }:
       : enquiryOnly ? "A private conversation is the first step. Speak with us about the piece, its details, and your preferences."
         : "Our boutique can share further details. Availability is confirmed personally."}</p>
     {selected?.canPurchase && !enquiryOnly ? <AddToCart key={selected.id} variantId={selected.id} /> : null}
-    {canEnquire || selected?.canPurchase ? <Link href={productType === "BESPOKE" ? "/appointment" : "/contact"}
+    {canEnquire || selected?.canPurchase ? <><Link href={requestHref("QUOTATION")}
       className={`hero-cta hero-primary-button ${styles.button}`}>
-      {productType === "BESPOKE" ? "Discuss a bespoke piece" : canEnquire ? "Enquire with the boutique" : "Contact the boutique"}
-    </Link> : <Link href="/collections" className={`hero-cta hero-secondary-button ${styles.button}`}>Explore the collections</Link>}
+      Request a Quotation
+    </Link><div><Link href={requestHref("MODIFICATION")} className={`hero-cta hero-secondary-button ${styles.button}`}>Request Changes</Link></div><div><Link href={requestHref("CONSULTATION")} className={`hero-cta hero-secondary-button ${styles.button}`}>Consult the Designer</Link></div></> : <Link href="/collections" className={`hero-cta hero-secondary-button ${styles.button}`}>Explore the collections</Link>}
     {selected ? <>
       <dl className={styles.specifications}>
-        {selected.metalType ? <div><dt>Metal</dt><dd>{[selected.metalType, selected.metalPurity, selected.metalColor].filter(Boolean).join(" · ")}</dd></div> : null}
+        {selected.metalType || selected.metalPurity || selected.metalColor ? <div><dt>Metal</dt><dd>{[selected.metalType, selected.metalPurity, selected.metalColor].filter(Boolean).join(" · ")}</dd></div> : null}
+        {selected.metalWeightGrams ? <div><dt>Metal weight</dt><dd>{selected.metalWeightGrams.replace(/(\.\d*?[1-9])0+$|\.0+$/, "$1")} g ({selected.metalWeightBasis === "ACTUAL" ? "actual" : "estimated"})</dd></div> : null}
         {selected.size ? <div><dt>Size</dt><dd>{selected.size}</dd></div> : null}
         {selected.configuration ? <div><dt>Configuration</dt><dd>{selected.configuration}</dd></div> : null}
         <div><dt>Reference</dt><dd>{selected.sku}</dd></div>

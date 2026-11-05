@@ -128,7 +128,7 @@ function BespokeCarouselNav({
   );
 }
 
-export function BespokeProcessCarousel({ appointmentHref = "#appointment" }: { appointmentHref?: "#appointment" | "/appointment" } = {}) {
+export function BespokeProcessCarousel({ appointmentHref = "/contact?intent=BESPOKE" }: { appointmentHref?: "#appointment" | "/appointment" | "/contact?intent=BESPOKE" } = {}) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [navPlacement, setNavPlacement] = useState<NavPlacement>("below");
   const activeInnerRef = useRef<HTMLDivElement | null>(null);
@@ -325,7 +325,7 @@ export function BespokeProcessCarousel({ appointmentHref = "#appointment" }: { a
                           />
                         ) : null}
                         <a href={appointmentHref} className="bespoke-carousel-cta">
-                          Book a Private Appointment
+                          Discuss a Bespoke Design
                         </a>
                       </div>
                     ) : null}

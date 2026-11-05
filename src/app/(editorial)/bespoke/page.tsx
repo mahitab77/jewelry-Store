@@ -14,7 +14,7 @@ export default function BespokePage() {
       <p>Every commission begins with a conversation. Meet a designer, shape your idea, refine the details, choose your stones, and watch your piece come to life.</p>
     </EditorialHero>
     <div className="lp-transition lp-transition-black-to-cream" aria-hidden="true" />
-    <BespokeProcessCarousel appointmentHref="/appointment" />
+    <BespokeProcessCarousel appointmentHref="/contact?intent=BESPOKE" />
     <div className="lp-transition lp-transition-cream-to-black" aria-hidden="true" />
     <EditorialSection eyebrow="Atelier craft" title="Considered from the first line.">
       <div className={styles.split}><div><p>A pendant with personal meaning. A ring defined by colour and proportion. Earrings balanced for light and movement. The starting point belongs to you.</p>
@@ -32,7 +32,7 @@ export default function BespokePage() {
         <details><summary>Can I begin with a sketch or a reference?</summary><p>Yes. The existing bespoke journey begins with your idea: a rough sketch, a saved inspiration or a personal concept can be a starting point for discussion.</p></details>
         <details><summary>Can I discuss the stone and setting?</summary><p>Share your preferences for colour, shape, metal and proportion. The options for your individual piece should be discussed with the boutique.</p></details>
         <details><summary>How long will a commission take?</summary><p>Please discuss timing with the boutique for your individual commission. The design and its requirements need to be considered first.</p></details>
-        <details><summary>How do I begin?</summary><p>Visit <Link href="/appointment">Private Appointments</Link> for the conversation topics and current enquiry availability. No appointment is confirmed by browsing the site.</p></details>
+        <details><summary>How do I begin?</summary><p><Link href="/contact?intent=BESPOKE">Discuss a bespoke design</Link> or <Link href="/appointment">request a designer consultation</Link>. All arrangements require personal confirmation.</p></details>
       </div>
     </EditorialSection>
     <EditorialCTA title="Begin your bespoke journey." label="Explore private appointments"><p>Bring a first idea, a colour, or a story you would like a piece to hold.</p></EditorialCTA>

@@ -1,3 +1,5 @@
+// Exercise retained direct-sales behavior; quotation-only denial has its own suites.
+process.env.COMMERCE_MODE = "DIRECT_SALES";
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { adminBrowserHarness } from "./helpers/admin-browser.mts";
@@ -110,6 +112,8 @@ test("mobile homepage bag, navigation, purchase control and cart quantities rema
     await page.goto(origin, { waitUntil: "networkidle" }); await count(page, 0); await healthy(page); await screenshot(page, "cart-homepage-mobile");
     await page.getByRole("button", { name: "Open menu", exact: true }).click();
     await page.getByRole("link", { name: "Shopping bag, 0 items", exact: true }).click(); await page.waitForURL(origin + "/cart");
+    await page.getByRole("heading", { name: "Your shopping bag", exact: true }).waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => document.body.style.overflow === "", undefined, { timeout: 5000 });
     assert.equal(await page.evaluate(() => document.body.style.overflow), "");
     await page.goto(origin + "/jewels/dev-repeatable-earrings", { waitUntil: "networkidle" }); await healthy(page);
     await operation(page, () => page.getByRole("button", { name: "Add to bag", exact: true }).click());

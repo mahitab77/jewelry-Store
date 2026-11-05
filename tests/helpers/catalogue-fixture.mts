@@ -6,8 +6,8 @@ import type { AdminRole } from "../../src/lib/admin/policy.ts";
 import type { EditorProduct, ProductInput, VariantInput } from "../../src/lib/admin/catalogue/types.ts";
 import assert from "node:assert/strict";
 
-export async function catalogueFixture(baseURL?: string, seeded = true) {
-  const fixture = await adminFixture(baseURL);
+export async function catalogueFixture(baseURL?: string, seeded = true, migrationLimit?: number) {
+  const fixture = await adminFixture(baseURL, undefined, migrationLimit);
   try {
     const role = `"${fixture.role}"`;
     await fixture.data.query(`GRANT SELECT ON categories,collections TO ${role}`);

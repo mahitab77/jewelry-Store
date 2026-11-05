@@ -4,6 +4,7 @@ import { withDatabaseClient, withTransaction } from "../db/client.ts";
 import { publicImageSource } from "../catalogue/presentation.ts";
 import { CART_LIFETIME, CartError, newToken, tokenHash } from "./session.ts";
 import { emptyCart, MAX_CART_LINES, MAX_QUANTITY, type Cart, type CartItem } from "./types.ts";
+import { purchasingUnavailableMessage, quotationOnly } from "../commerce-policy.ts";
 
 const MAX_MONEY = BigInt("9223372036854775807");
 const revisionSql = `to_char(updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
@@ -47,7 +48,7 @@ async function findCart(client: PoolClient, hash: string, lock = false): Promise
 }
 function selection(row: SelectionRow): CartItem {
   const visible = row.published;
-  const direct = visible && row.active && row.type !== "BESPOKE" && row.mode !== "ENQUIRY_ONLY";
+  const direct = !quotationOnly() && visible && row.active && row.type !== "BESPOKE" && row.mode !== "ENQUIRY_ONLY";
   const amount = direct && row.price !== null ? BigInt(row.price) : null;
   const total = amount === null ? null : amount * BigInt(row.quantity);
   const priceBound = amount !== null && amount > BigInt(0) && MAX_MONEY / amount < BigInt(MAX_QUANTITY) ? Number(MAX_MONEY / amount) : MAX_QUANTITY;
@@ -101,6 +102,7 @@ export async function readOwnedCart(client: PoolClient, token: string, lock = fa
 }
 type Mutation = { kind: "add"; variantId: string; quantity: number } | { kind: "update"; itemId: string; quantity: number; revision: string } | { kind: "remove"; itemId: string; revision: string };
 export async function mutateCart(token: string | null, mutation: Mutation) {
+  if (quotationOnly() && mutation.kind !== "remove") return { ...rejected(purchasingUnavailableMessage), token: null };
   const result = await withTransaction(async (client) => {
     // Logical expiry always applies, even if this opportunistic maintenance has not run.
     await client.query(`UPDATE carts SET status='EXPIRED',updated_at=clock_timestamp() WHERE id IN

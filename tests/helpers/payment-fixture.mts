@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { cartFixture } from './cart-fixture.mts';
 import { closeDatabase } from '../../src/lib/db/client.ts';
 
-export async function paymentFixture(origin='https://payments.boutique.test') {
-  const f=await cartFixture(origin), role='lapalme_payment_'+randomUUID().replaceAll('-','');let created=false;
+export async function paymentFixture(origin='https://payments.boutique.test', migrationLimit?: number) {
+  const f=await cartFixture(origin,migrationLimit), role='lapalme_payment_'+randomUUID().replaceAll('-','');let created=false;
   try{
     await f.data.query(`CREATE ROLE "${role}" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);created=true;
     await f.data.query(`GRANT USAGE ON SCHEMA public TO "${role}"`);
