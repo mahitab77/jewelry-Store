@@ -1,0 +1,56 @@
+{
+  "sdk": "cloudinary@2.11.0",
+  "integrity": "sha512-o2pAkDDqrzPFE/mn9GCfFjBIGQmPs++Ts6rtkFl4vY528DNHiMovKWjH16HBjeGa9iwI7eAad24aWN2emT0aww==",
+  "source": "https://registry.npmjs.org/cloudinary/-/cloudinary-2.11.0.tgz",
+  "options": {
+    "resource_type": "image",
+    "type": "authenticated",
+    "signature_algorithm": "sha256",
+    "sign_url": true,
+    "secure": true,
+    "urlAnalytics": false
+  },
+  "credentials": "Synthetic mockCloudinaryConfiguration from tests/helpers/cloudinary-mock.mts only; no live account.",
+  "verifiedVersions": [
+    "1",
+    "1700000000",
+    "9999999999999999"
+  ],
+  "vectors": [
+    {
+      "publicId": "la-palme/catalogue/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222",
+      "format": "jpg",
+      "expectedUrl": "https://res.cloudinary.com/lapalme-fixture/image/authenticated/s--LGZFe9uv--/v1/la-palme/catalogue/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.jpg"
+    },
+    {
+      "publicId": "la-palme/catalogue/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222",
+      "format": "png",
+      "expectedUrl": "https://res.cloudinary.com/lapalme-fixture/image/authenticated/s--utakNYhg--/v1/la-palme/catalogue/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.png"
+    },
+    {
+      "publicId": "la-palme/catalogue/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222",
+      "format": "webp",
+      "expectedUrl": "https://res.cloudinary.com/lapalme-fixture/image/authenticated/s--kHfvT2k8--/v1/la-palme/catalogue/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.webp"
+    },
+    {
+      "publicId": "la-palme/catalogue/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "format": "jpg",
+      "expectedUrl": "https://res.cloudinary.com/lapalme-fixture/image/authenticated/s--JCv7ZtYT--/v1/la-palme/catalogue/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.jpg"
+    },
+    {
+      "publicId": "la-palme/catalogue/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "format": "png",
+      "expectedUrl": "https://res.cloudinary.com/lapalme-fixture/image/authenticated/s--a5_IYXKc--/v1/la-palme/catalogue/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.png"
+    },
+    {
+      "publicId": "la-palme/catalogue/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "format": "webp",
+      "expectedUrl": "https://res.cloudinary.com/lapalme-fixture/image/authenticated/s--0XJpXz6T--/v1/la-palme/catalogue/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.webp"
+    },
+    {
+      "publicId": "la-palme/catalogue/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-000000000011",
+      "format": "jpg",
+      "expectedUrl": "https://res.cloudinary.com/lapalme-fixture/image/authenticated/s--ZAqpwbs---/v1/la-palme/catalogue/11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-000000000011.jpg"
+    }
+  ]
+}

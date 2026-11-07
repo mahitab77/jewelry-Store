@@ -16,7 +16,7 @@
     "admin:provision": "node --experimental-strip-types --conditions=react-server --env-file-if-exists=.env.local scripts/provision-admin.mts",
     "test:admin": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/admin.test.mts",
     "test:admin:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/admin.browser.mts",
-    "test:catalogue-admin": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/catalogue-admin.test.mts tests/catalogue-media-publication.test.mts tests/taxonomy.test.mts tests/taxonomy-grants.test.mts tests/individual-stone-stock.test.mts",
+    "test:catalogue-admin": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/cloudinary-delivery.test.mts tests/catalogue-admin.test.mts tests/catalogue-media-publication.test.mts tests/taxonomy.test.mts tests/taxonomy-grants.test.mts tests/individual-stone-stock.test.mts",
     "test:catalogue-admin:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/catalogue-admin.browser.mts",
     "test:product-management:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/product-management.browser.mts",
     "test:ui-corrections": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/v3-public.test.mts tests/v3-admin-validation.test.mts tests/order-status-access.test.mts",

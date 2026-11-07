@@ -40,9 +40,10 @@ export async function preparePhoto(bytes: Uint8Array, mime: string): Promise<Pho
 }
 export function deliveryUrl(config: CloudinaryConfiguration, asset: ProviderAsset) {
   if (!validPublicId(asset.publicId) || !/^[1-9][0-9]{0,15}$/.test(asset.version) || !["jpg", "png", "webp"].includes(asset.format)) throw new CatalogueAdminError("Invalid stored image metadata.", 503);
-  const path = `v${asset.version}/${asset.publicId}.${asset.format}`;
-  const signature = createHash("sha256").update(path + config.apiSecret).digest("base64url").slice(0, 8);
-  return `https://res.cloudinary.com/${config.cloudName}/image/authenticated/s--${signature}--/${path}`;
+  const source = `${asset.publicId}.${asset.format}`;
+  // Cloudinary signs the source; the URL's version is added separately.
+  const signature = createHash("sha256").update(source + config.apiSecret).digest("base64url").slice(0, 8);
+  return `https://res.cloudinary.com/${config.cloudName}/image/authenticated/s--${signature}--/v${asset.version}/${source}`;
 }
 export function cloudinaryProvider(config = cloudinaryConfiguration(), fetcher: typeof fetch = fetch): MediaProvider {
   const api = `https://api.cloudinary.com/v1_1/${config.cloudName}/image`;

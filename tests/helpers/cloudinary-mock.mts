@@ -4,9 +4,10 @@ import type { CloudinaryConfiguration, ProviderAsset } from "../../src/lib/media
 
 export const mockCloudinaryConfiguration: CloudinaryConfiguration = { cloudName: "lapalme-fixture", apiKey: "123456789012345", apiSecret: "fixture-only-cloudinary-secret-no-live-account" };
 function expectedDelivery(asset: ProviderAsset) {
-  const path = `v${asset.version}/${asset.publicId}.${asset.format}`;
-  const digest = createHash("sha256").update(path + mockCloudinaryConfiguration.apiSecret).digest("base64url").slice(0, 8);
-  return `https://res.cloudinary.com/${mockCloudinaryConfiguration.cloudName}/image/authenticated/s--${digest}--/${path}`;
+  // Independent provider expectation, checked against retained official-SDK vectors.
+  const source = asset.publicId + "." + asset.format;
+  const digest = createHash("sha256").update(source + mockCloudinaryConfiguration.apiSecret).digest("base64").slice(0, 8).replace(/\//g, "_").replace(/\+/g, "-");
+  return `https://res.cloudinary.com/${mockCloudinaryConfiguration.cloudName}/image/authenticated/s--${digest}--/v${asset.version}/${source}`;
 }
 export function cloudinaryMock() {
   const assets = new Map<string, { asset: ProviderAsset; bytes: Uint8Array }>();
