@@ -62,6 +62,24 @@ No automatic mutation retry or anonymous request-status lookup is provided.
 Distributed global/contact throttles reuse `cart_rate_limits`; purpose-separated
 HMAC keys contain no raw contact data. Counters commit outside request transactions.
 
+Error responses distinguish `NOT_CREATED`, `CONFLICT` and `UNKNOWN`. Only a
+validated UUID whose absence is checked under the cross-table advisory lock,
+followed by a successful rollback before any business write or commit attempt,
+receives `NOT_CREATED` with that same `submissionId`. The form can then correct
+the rejected fields while retaining the UUID: a delayed original and corrected
+submission still serialize to at most one record. Existing-payload conflicts,
+throttles, origin/transport errors and uncertain commit/rollback outcomes never
+unlock editing. Every valid UUID consumes the global allowance before checking
+absence, including submissions with invalid fields; normalized contacts also
+consume their existing allowance. Successful receipts keep their original shape.
+
+One document-local request provider retains each request context's draft,
+submission UUID, uncertain payload and receipt across application Back/Forward
+navigation. Dirty and uncertain forms warn before leaving; explicit discard
+invalidates late responses. No personal fields enter history payloads, URLs or
+browser storage. Full document exit remains guarded but is not durable storage.
+Successful receipts receive heading focus and scroll into view.
+
 `/admin/requests` unifies existing entities with pagination, filters, a new count
 and explicit refresh. Page/API/repository require `operations:manage`; transactions
 recheck the enabled actor. CATALOGUE_MANAGER remains excluded. Existing domain
@@ -72,6 +90,13 @@ audits before/after confirmation/assignment values. Staff sends invitations or
 boutique details manually; no notification or calendar provider is configured.
 All entered times are Africa/Cairo, converted independently of host/browser zone;
 invalid dates and DST gaps/ambiguity are rejected.
+
+Opening an authorized inbox detail focuses its heading; subsequent background
+updates do not steal focus. Field errors stay beside their controls. An unavailable
+assignee remains identified until deliberate reassignment or unassignment. Completed
+and cancelled consultations expose their retained boutique destination read-only,
+including inactive status, through the existing protected detail projection. Active
+destination choices and assignment authorization remain unchanged.
 
 Personal data (name, supplied contact, message and appointment arrangements) stays
 in the relevant request table for authorized operations staff. Public receipts omit
@@ -797,7 +822,7 @@ the draft for correction without treating it as a successful save.
 | 33 | Adjustment (+/− units) / ProductEditor inventory | Number command; required | required; step=1 | Integer −1M..1M, nonzero; resulting stock nonnegative, ≥reserved, ≤1M; one-of-kind or any INDIVIDUAL stone≤1; bespoke forbidden | Delta changes inventory.on_hand; before/after/delta also audited | I → command clears, counters/revision reload → availability; PM/CA/IS; CORRECT |
 | 34 | Adjustment reason / ProductEditor inventory | Text command; required | required; maxLength=240 | Trim; nonblank; ≤240 | audit_events.metadata.reason, CATALOGUE_INVENTORY_ADJUSTED | I → history; input resets after success; PM/CA; CORRECT |
 | 35 | Add Photographs / ProductEditor | Multiple device files; supported primary image required to publish | JPEG/PNG/WebP accept list; local previews; upload only after confirmed product ID | Decode/validate MIME, bytes, dimensions, pixels, animation; orient/re-encode/strip metadata; verify provider response | product_media reference/provider metadata + catalogue_media_jobs; media metadata CHECKs | U → saved image/reference reload in preview; local object URLs revoked; original filename/bytes need no DB column; PM/CA; CORRECT |
-| 36 | Photograph description (optional) / ProductEditor | Text; optional override | maxLength=250; blank uses saved jewelry name and photograph ordinal | Trim; 5–250 characters remains required at upload boundary | product_media.alt_text; application strengthens nullable schema | U → altText → editor/image alternate text/public image; PM/CA; CORRECT |
+| 36 | Photograph description (optional) / ProductEditor | Text; optional override | maxLength=250; trim and reject nonblank values outside 5–250 before upload or automatic-upload save; reveal/focus the UUID-keyed field and retain the queue; blank uses saved jewelry name and photograph ordinal | Trim; 5–250 characters remains required at upload boundary | product_media.alt_text; application strengthens nullable schema | U → altText → editor/image alternate text/public image; PM/CA; CORRECT |
 | 37 | Alt text for photograph N / ProductEditor | Text; required for saved arrangement | No HTML rule | Trim; 5–250 characters | Same product_media.alt_text | A → altText → editor/public image; PM/CA; CORRECT |
 | 38 | Primary photograph N / ProductEditor | Radio; exactly one when images exist | Shared radio group/boolean state | Strict boolean; exact one primary; published selected reference must remain supported | product_media.is_primary; image-only CHECK + unique partial index | A → primary → card and detail hero independently of display order; PM/MP; CORRECT after corrections |
 | 39 | Move photograph N up/down / ProductEditor | Ordering buttons | Boundary controls disabled | Exact current-image permutation; no duplicate/foreign IDs; revision required; indexes become order | product_media.display_order; nonnegative CHECK | A → ordered media → editor/gallery thumbnails; PM/CA; CORRECT |

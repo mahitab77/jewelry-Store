@@ -5,6 +5,7 @@ import { catalogueMetadata, loadListing } from "../../lib/catalogue/storefront.t
 import { cataloguePageHref, isCatalogueSlug, parseCatalogueQuery, type CatalogueQuery, type ListingKind } from "../../lib/catalogue/presentation.ts";
 import { CatalogueNotice } from "./CatalogueShell";
 import { JewelryCard } from "./JewelryCard";
+import { RingsIntroduction, RingsPersonalization } from "./RingsEditorial";
 import styles from "./catalogue.module.css";
 
 async function listingRequest(kind: ListingKind, slug: string, searchParams: Promise<CatalogueQuery>) {
@@ -32,31 +33,31 @@ export async function CatalogueListing({ kind, slug = "", searchParams }: {
   const { result, query, path } = await listingRequest(kind, slug, searchParams);
   if (result.state !== "ready") return <CatalogueNotice kind={result.state === "not-found" ? "not-found" : result.state} />;
   const { title, description, categories, collections, products, development } = result.value;
+  const rings = kind === "category" && slug === "rings";
+  const navigation = <>
+    <nav className={styles.categoryNav} aria-label="Jewelry categories">
+      <Link href="/collections" aria-current={kind === "all" ? "page" : undefined}>All jewelry</Link>
+      {categories.map((category) => <Link key={category.id} href={`/collections/${category.slug}`} aria-current={kind === "category" && category.slug === slug ? "page" : undefined}>{category.name}</Link>)}
+    </nav>
+    {collections.length ? <nav className={styles.editorialNav} aria-label="Editorial collections"><span>Editorial collections</span>{collections.map((collection) => <Link key={collection.id} href={`/collections/edit/${collection.slug}`} aria-current={kind === "editorial" && collection.slug === slug ? "page" : undefined}>{collection.name}</Link>)}</nav> : null}
+  </>;
   return <>
     {development ? <p className={styles.development} role="note">Development catalogue · Sample entries for preview only.</p> : null}
-    <section className={`maison-container ${styles.intro}`}>
+    {rings ? <RingsIntroduction title={title} description={description}>{navigation}</RingsIntroduction> : <section className={`maison-container lp-transition-content ${styles.intro}`}>
       <p className={styles.eyebrow}>{kind === "editorial" ? "An editorial collection" : "Natural stones. Personal expression."}</p>
       <div className="gold-hairline mx-auto" />
       <h1 className="font-display text-balance">{title}</h1><p>{description}</p>
-      <nav className={styles.categoryNav} aria-label="Jewelry categories">
-        <Link href="/collections" aria-current={kind === "all" ? "page" : undefined}>All jewelry</Link>
-        {categories.map((category) => <Link key={category.id} href={`/collections/${category.slug}`}
-          aria-current={kind === "category" && category.slug === slug ? "page" : undefined}>{category.name}</Link>)}
-      </nav>
-      {collections.length ? <nav className={styles.editorialNav} aria-label="Editorial collections">
-        <span>Editorial collections</span>{collections.map((collection) => <Link key={collection.id} href={`/collections/edit/${collection.slug}`}
-          aria-current={kind === "editorial" && collection.slug === slug ? "page" : undefined}>{collection.name}</Link>)}
-      </nav> : null}
-    </section>
+      {navigation}
+    </section>}
     <div className="lp-transition lp-transition-black-to-cream" aria-hidden="true" />
-    <section className={styles.catalogueBody} aria-label="Jewelry selection">
-      <div className="maison-container">
+    <section id={rings ? "rings-selection" : undefined} className={styles.catalogueBody} aria-label="Jewelry selection">
+      <div className="maison-container lp-transition-content">
         <div className={styles.listingToolbar}>
           <p>{products.items.length ? `${products.items.length} ${products.items.length === 1 ? "piece" : "pieces"} on this page` : "The selection"}</p>
           <nav aria-label="Sort jewelry"><Link href={cataloguePageHref(path, 1, "newest")} aria-current={query.sort === "newest" ? "true" : undefined}>Latest</Link>
             <Link href={cataloguePageHref(path, 1, "name_asc")} aria-current={query.sort === "name_asc" ? "true" : undefined}>Name</Link></nav>
         </div>
-        {products.items.length ? <div className={styles.grid}>{products.items.map((product) => <JewelryCard key={product.id} product={product} />)}</div>
+        {products.items.length ? <div className={styles.grid}>{products.items.map((product) => <JewelryCard key={product.id} product={product} requestQuotation={rings} />)}</div>
           : <div className={styles.empty}><p className={styles.eyebrow}>A considered selection</p>
             <h2 className="font-display">{query.page > 1 ? "You have reached the end of this selection." : "The next chapter is taking shape."}</h2>
             <p>{query.page > 1 ? "Return to the beginning to explore the available pieces." : "There are no published pieces in this collection at present. Our boutique is here to help with a personal request."}</p>
@@ -70,5 +71,6 @@ export async function CatalogueListing({ kind, slug = "", searchParams }: {
       </div>
     </section>
     <div className="lp-transition lp-transition-cream-to-black" aria-hidden="true" />
+    {rings ? <RingsPersonalization /> : null}
   </>;
 }

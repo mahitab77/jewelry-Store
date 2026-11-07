@@ -3,7 +3,7 @@ import { createHmac } from "node:crypto";
 import type { PoolClient } from "pg";
 import { getAdminRuntime, type AdminRuntime } from "../admin/runtime.ts";
 import { consume } from "../cart/repository.ts";
-import { fail, parseRequest, type NormalizedRequest } from "./validation.ts";
+import { fail, parseRequest, RequestError, submissionReference, type NormalizedRequest } from "./validation.ts";
 import type { ProductContext, RequestReceipt } from "./types.ts";
 
 export const requestTables = { QUOTATION: "product_enquiries", MODIFICATION: "bespoke_requests", BESPOKE: "bespoke_requests", CONSULTATION: "appointment_requests" } as const;
@@ -18,14 +18,14 @@ export const requestUnion = `SELECT ${common},'QUOTATION'::TEXT AS kind,NULL::TE
   to_char(r.confirmed_start_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "confirmedStart",r.boutique_location_id AS "boutiqueLocationId" FROM appointment_requests r`;
 const receipt = (reference: string): RequestReceipt => ({ reference, message: "Your request has been received. Our team will contact you to discuss the details. Pricing and appointments are subject to confirmation." });
 
-async function throttle(input: NormalizedRequest, runtime: AdminRuntime) {
+async function throttle(input: NormalizedRequest | null, runtime: AdminRuntime) {
   const client = await runtime.pool.connect();
   try {
     // Deliberately outside the request transaction: rejected submissions still
     // consume distributed limits. No raw contact enters counter keys or logs.
     await client.query(`DELETE FROM cart_rate_limits WHERE key_hash IN (SELECT key_hash FROM cart_rate_limits WHERE expires_at<=statement_timestamp() ORDER BY expires_at LIMIT 100 FOR UPDATE SKIP LOCKED)`);
     if (!await consume(client, "requests:global", 120)) fail("Please wait a minute before sending another request.", 429);
-    for (const [kind, contact] of [["email", input.email], ["phone", input.phone]] as const) {
+    for (const [kind, contact] of [["email", input?.email], ["phone", input?.phone]] as const) {
       if (!contact) continue;
       const hash = createHmac("sha256", runtime.config.secret).update(`la-palme-requests:${kind}:${contact}`).digest("hex");
       if (!await consume(client, `requests:contact:${hash}`, 5)) fail("Please wait a minute before sending another request.", 429);
@@ -53,26 +53,43 @@ async function productContext(client: PoolClient, input: NormalizedRequest): Pro
 }
 
 export async function submitRequest(value: unknown, runtime: AdminRuntime = getAdminRuntime()): Promise<RequestReceipt> {
-  const input = parseRequest(value); await throttle(input, runtime);
+  const submissionId = submissionReference(value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>).submissionId : undefined);
+  let input: NormalizedRequest | null = null, validationError: RequestError | null = null;
+  try { input = parseRequest(value); }
+  catch (error) { if (!(error instanceof RequestError)) throw error; validationError = error; }
+  await throttle(input, runtime);
   const client = await runtime.pool.connect();
+  let absent = false, businessWriteStarted = false, commitAttempted = false;
   try {
     await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,1313))", [input.submissionId]);
-    const previous = (await client.query(`SELECT * FROM (${requestUnion}) q WHERE id=$1`, [input.submissionId])).rows;
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,1313))", [submissionId]);
+    const previous = (await client.query(`SELECT * FROM (${requestUnion}) q WHERE id=$1`, [submissionId])).rows;
     if (previous.length) {
       const old = previous[0];
-      if (previous.length !== 1 || old.kind !== input.kind || old.productId !== input.productId || old.variantId !== input.variantId || old.name !== input.name || old.email !== input.email || old.phone !== input.phone || old.message !== input.message || old.channel !== input.channel || old.preferredStart !== input.preferredStart) fail("This submission reference has already been used. Keep the original request unchanged when recovering its receipt.", 409);
+      if (!input || previous.length !== 1 || old.kind !== input.kind || old.productId !== input.productId || old.variantId !== input.variantId || old.name !== input.name || old.email !== input.email || old.phone !== input.phone || old.message !== input.message || old.channel !== input.channel || old.preferredStart !== input.preferredStart) throw new RequestError("This submission reference has already been used. Keep the original request unchanged when recovering its receipt.", 409, undefined, { outcome: "CONFLICT" });
       // Compare the immutable submitted data BEFORE checking today's catalogue,
       // preferred time or snapshot: a committed receipt survives later edits.
-      await client.query("COMMIT"); return receipt(input.submissionId);
+      commitAttempted = true; await client.query("COMMIT"); return receipt(submissionId);
     }
+    absent = true;
+    if (validationError) throw validationError;
+    if (!input) throw new Error("Request validation did not produce a submission.");
     if (input.preferredStart && Date.parse(input.preferredStart) <= Date.now()) fail("Choose a future preferred time in Africa/Cairo.", 400, "preferredTime");
     const snapshot = await productContext(client, input), table = requestTables[input.kind];
     const values: unknown[] = [input.submissionId, input.productId, input.variantId, input.name, input.email, input.phone, input.message, snapshot ? JSON.stringify(snapshot) : null];
+    businessWriteStarted = true;
     await client.query(`INSERT INTO ${table}(id,product_id,variant_id,contact_name,contact_email,contact_phone,message,product_context${input.kind === "CONSULTATION" ? ",consultation_channel,preferred_start_at" : ""})
       VALUES($1,$2,$3,$4,$5,$6,$7,$8::JSONB${input.kind === "CONSULTATION" ? ",$9,$10" : ""})`, input.kind === "CONSULTATION" ? [...values, input.channel, input.preferredStart] : values);
     await client.query(`INSERT INTO audit_events(actor_kind,action,target_table,target_id,metadata) VALUES('SYSTEM','REQUEST_RECEIVED',$1,$2,$3::JSONB)`, [table, input.submissionId, JSON.stringify({ kind: input.kind, productLinked: Boolean(input.productId), channel: input.channel })]);
-    await client.query("COMMIT"); return receipt(input.submissionId);
-  } catch (error) { await client.query("ROLLBACK"); throw error; }
+    commitAttempted = true; await client.query("COMMIT"); return receipt(submissionId);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    // This proves absence only while holding this UUID's lock. A delayed
+    // original may still arrive, so corrections must reuse the same UUID.
+    if (absent && !businessWriteStarted && !commitAttempted && error instanceof RequestError && [400, 409].includes(error.status)) {
+      throw new RequestError(error.message, error.status, error.field, { outcome: "NOT_CREATED", submissionId });
+    }
+    throw error;
+  }
   finally { client.release(); }
 }

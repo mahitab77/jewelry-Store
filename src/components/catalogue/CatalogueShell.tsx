@@ -11,7 +11,7 @@ export async function CatalogueShell({ children }: { children: React.ReactNode }
     <CatalogueHeader quotationOnly={quotationOnly()} />
     <main id="catalogue-content">{children}</main>
     <footer className={styles.footer}>
-      <div className="maison-container">
+      <div className="maison-container lp-transition-content">
         <p className="font-display">La Palme d&apos;Or Gems</p>
         <p>Bespoke natural stone jewelry, privately designed in Egypt.</p>
         <nav aria-label="Boutique information">

@@ -29,9 +29,11 @@ export interface AdminRequest {
   productId: string | null; variantId: string | null; productContext: ProductContext | null;
   channel: ConsultationChannel | null; preferredStart: string | null; confirmedStart: string | null;
   boutiqueLocationId: string | null; assignedAdminId: string | null; assignedName: string | null;
+  boutiqueLocation?: { id: string; name: string; governorate: string; city: string; street: string; isActive: boolean } | null;
   revision: string; createdAt: string;
 }
 export interface RequestChoices { staff: { id: string; name: string }[]; locations: { id: string; name: string; governorate: string; city: string; street: string }[] }
 export interface RequestList extends RequestChoices { items: AdminRequest[]; newCount: number; page: number; hasMore: boolean }
 export interface RequestDetail extends RequestChoices { request: AdminRequest }
 export interface RequestReceipt { reference: string; message: string }
+export type RequestFailureOutcome = "NOT_CREATED" | "CONFLICT" | "UNKNOWN";

@@ -142,7 +142,7 @@ export function TaxonomyEditor({ initial }: { initial: TaxonomyState }) {
     } finally { busy.current = false; setPending(false); }
   }
   function nameField(kind: Kind, draft: CommonDraft, change: (value: Partial<CommonDraft>) => void) {
-    return <label className={styles.field}><span>{kind === "category" ? "Category name" : "Collection name"} <span aria-hidden="true">(required)</span></span><input {...fieldAttributes(kind, "name")} aria-label="Name" name="name" required maxLength={200} autoComplete="off" value={draft.name} onChange={(event) => change({ name: event.target.value })} />{fieldError(kind, "name")}</label>;
+    return <label className={styles.field}><span>{kind === "category" ? "Category name" : "Collection name"} <span aria-hidden="true">(required)</span></span><input {...fieldAttributes(kind, "name")} aria-label={kind === "category" ? "Category name" : "Collection name"} name="name" required maxLength={200} autoComplete="off" value={draft.name} onChange={(event) => change({ name: event.target.value })} />{fieldError(kind, "name")}</label>;
   }
   function commonDetails(kind: Kind, draft: CommonDraft, change: (value: Partial<CommonDraft>) => void, slugLocked = false) {
     return <>

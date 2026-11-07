@@ -9,9 +9,12 @@ export type RequestQuery = Record<string,string | string[] | undefined>;
 export async function RequestEntry({ searchParams, consultation = false }: { searchParams: Promise<RequestQuery>; consultation?: boolean }) {
   await connection();
   const query = await searchParams;
-  const allowed = ["intent","product","variant"], validKeys = Object.keys(query).every((key) => allowed.includes(key) && typeof query[key] === "string");
+  // Only these parameters describe the request. Campaign and referral parameters
+  // belong to their callers, and may contain repeated values of their own.
+  const validOwnedValues = ["intent", "product", "variant"].every((key) => query[key] === undefined || typeof query[key] === "string" && query[key].trim().length > 0);
+  const validIntent = query.intent === undefined || typeof query.intent === "string" && ["QUOTATION", "MODIFICATION", "BESPOKE", "CONSULTATION"].includes(query.intent);
   const intent = consultation ? "CONSULTATION" : query.intent || (query.product ? "QUOTATION" : "BESPOKE");
-  if (!validKeys || typeof intent !== "string" || !["QUOTATION","MODIFICATION","BESPOKE","CONSULTATION"].includes(intent)) return <section className={styles.root}><p role="alert">This request link is not valid. Please choose a piece from the collections or start a new conversation below.</p><Link href="/contact">Start a conversation</Link></section>;
+  if (!validOwnedValues || !validIntent || typeof intent !== "string") return <section className={styles.root}><p role="alert">This request link is not valid. Please choose a piece from the collections or start a new conversation below.</p><Link href="/contact">Start a conversation</Link></section>;
   let product: RequestProduct | undefined;
   if (query.product) {
     const result = await loadJewel(query.product as string);
@@ -19,5 +22,6 @@ export async function RequestEntry({ searchParams, consultation = false }: { sea
     product = result.value;
   }
   if (!product && (intent === "QUOTATION" || intent === "MODIFICATION" || query.variant)) return <section className={styles.root}><p role="alert">Choose the piece and configuration you would like to discuss from its product page.</p><Link href="/collections">Explore the collections</Link></section>;
-  return <RequestForm key={`${product?.id || "general"}:${intent}:${query.variant || ""}`} product={product} initialKind={intent as RequestKind} initialVariant={typeof query.variant === "string" ? query.variant : undefined} consultation={consultation} />;
+  const draftKey = `${consultation ? "appointment" : "contact"}:${product?.id || "general"}:${intent}:${query.variant || ""}`;
+  return <RequestForm key={draftKey} draftKey={draftKey} product={product} initialKind={intent as RequestKind} initialVariant={typeof query.variant === "string" ? query.variant : undefined} consultation={consultation} />;
 }

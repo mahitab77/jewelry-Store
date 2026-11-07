@@ -36,7 +36,7 @@ test("taxonomy guards switching and navigation without warning for unchanged for
   try {
     await signIn(page); await page.goto(origin + "/admin/taxonomy");
     await page.getByLabel("Choose category", { exact: true }).selectOption(id(1));
-    const category = page.getByRole("group", { name: "Edit category", exact: true }), name = category.getByLabel("Name", { exact: true });
+    const category = page.getByRole("group", { name: "Edit category", exact: true }), name = category.getByLabel("Category name", { exact: true });
     const originalName = await name.inputValue();
     await page.getByLabel("Choose category", { exact: true }).selectOption(id(2)); assert.equal(dialogs, 0);
     await page.getByLabel("Choose category", { exact: true }).selectOption(id(1)); await name.fill("Unsaved local category");
@@ -48,7 +48,7 @@ test("taxonomy guards switching and navigation without warning for unchanged for
     discard = true; await page.getByLabel("Choose category", { exact: true }).selectOption(id(2)); await page.getByLabel("Choose category", { exact: true }).selectOption(id(1));
     assert.equal(await name.inputValue(), originalName);
     await page.getByLabel("Choose collection", { exact: true }).selectOption(id(12));
-    const collection = page.getByRole("group", { name: "Edit collection", exact: true }), collectionName = collection.getByLabel("Name", { exact: true });
+    const collection = page.getByRole("group", { name: "Edit collection", exact: true }), collectionName = collection.getByLabel("Collection name", { exact: true });
     await collectionName.fill("Unsaved local collection"); discard = false; await page.getByLabel("Choose collection", { exact: true }).selectOption(id(11));
     assert.equal(await page.getByLabel("Choose collection", { exact: true }).inputValue(), id(12)); assert.equal(await collectionName.inputValue(), "Unsaved local collection");
     discard = true; await page.getByRole("button", { name: "Discard collection changes", exact: true }).click();
@@ -87,7 +87,7 @@ test("taxonomy timeout after server commit is not retried and explicit reload re
       const response = await route.fetch(); assert.equal(response.status(), 200); await held; try { await route.fulfill({ response }); } catch { /* The browser aborted the delayed response. */ }
     });
     await page.getByRole("button", { name: "Save category", exact: true }).click(); await alert(page).filter({ hasText: "outcome is uncertain" }).waitFor();
-    assert.equal(attempts, 1); assert.ok(await page.getByRole("button", { name: "Save category", exact: true }).isDisabled()); assert.ok(await group.getByLabel("Name", { exact: true }).isEnabled());
+    assert.equal(attempts, 1); assert.ok(await page.getByRole("button", { name: "Save category", exact: true }).isDisabled()); assert.ok(await group.getByLabel("Category name", { exact: true }).isEnabled());
     assert.ok(await page.evaluate(() => (window as unknown as { __catalogueTimeouts: number[] }).__catalogueTimeouts.includes(20000)));
     await page.getByRole("button", { name: "Reload saved groupings", exact: true }).click(); await page.getByRole("status").filter({ hasText: "Saved categories and collections loaded." }).waitFor();
     assert.equal(await group.getByLabel("Description", { exact: true }).inputValue(), "Local committed category, delayed reply.");

@@ -5,7 +5,7 @@ import styles from "./editorial.module.css";
 export function EditorialHero({ eyebrow, title, children, image }: {
   eyebrow: string; title: string; children: React.ReactNode; image?: { src: string; alt: string };
 }) {
-  return <section className={`maison-container ${styles.hero} ${image ? styles.heroWithImage : ""}`}>
+  return <section className={`maison-container lp-transition-content ${styles.hero} ${image ? styles.heroWithImage : ""}`}>
     <div><p className={styles.eyebrow}>{eyebrow}</p><div className="gold-hairline" />
       <h1 className="font-display text-balance">{title}</h1><div className={styles.introduction}>{children}</div>
     </div>
@@ -20,7 +20,7 @@ export function EditorialSection({ eyebrow, title, children, light = false, id }
   return <>
     {light ? <div className="lp-transition lp-transition-black-to-cream" aria-hidden="true" /> : null}
     <section id={id} className={`${styles.section} ${light ? styles.light : ""}`}>
-      <div className="maison-container"><p className={styles.eyebrow}>{eyebrow}</p><div className="gold-hairline" />
+      <div className="maison-container lp-transition-content"><p className={styles.eyebrow}>{eyebrow}</p><div className="gold-hairline" />
         <h2 className={`font-display ${styles.sectionTitle}`}>{title}</h2>{children}
       </div>
     </section>
@@ -31,7 +31,7 @@ export function EditorialSection({ eyebrow, title, children, light = false, id }
 export function EditorialCTA({ title, children, href = "/appointment", label = "Private appointments" }: {
   title: string; children: React.ReactNode; href?: string; label?: string;
 }) {
-  return <section className={`maison-container ${styles.ctaSection}`}>
+  return <section className={`maison-container lp-transition-content ${styles.ctaSection}`}>
     <div className={`royal-frame appointment-panel ${styles.cta}`}>
       <p className={styles.eyebrow}>A personal conversation</p><div className="gold-hairline mx-auto" />
       <h2 className="font-display">{title}</h2><div>{children}</div>

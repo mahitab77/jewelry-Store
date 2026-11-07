@@ -2,13 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { primaryNavigation } from "@/lib/navigation";
 import { CartBag } from "./cart/CartBag";
 
 export function SiteHeader({ quotationOnly = true }: { quotationOnly?: boolean }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
+  const toggle = useRef<HTMLButtonElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -33,7 +34,7 @@ export function SiteHeader({ quotationOnly = true }: { quotationOnly?: boolean }
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape") { close(); toggle.current?.focus(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -76,6 +77,7 @@ export function SiteHeader({ quotationOnly = true }: { quotationOnly?: boolean }
         <div className="relative flex shrink-0 items-center gap-2 sm:gap-3">
           {!quotationOnly ? <CartBag onNavigate={close} /> : null}
           <button
+            ref={toggle}
             type="button"
             className="nav-menu-button inline-flex h-11 w-11 flex-col items-center justify-center gap-[5px] rounded-md border border-[rgba(217,189,122,0.28)] bg-[rgba(255,250,240,0.06)] text-ivory transition hover:border-[rgba(217,189,122,0.45)] hover:bg-[rgba(255,250,240,0.1)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--gold)] lg:hidden"
             aria-expanded={open}

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Cormorant_Garamond, Inter } from "next/font/google";
 import "./globals.css";
 import { siteOrigin } from "../lib/site.ts";
+import { RequestExperienceProvider } from "../components/requests/RequestExperienceProvider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -56,7 +57,7 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${cormorant.variable} h-full scroll-smooth antialiased`}
     >
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full"><RequestExperienceProvider>{children}</RequestExperienceProvider></body>
     </html>
   );
 }

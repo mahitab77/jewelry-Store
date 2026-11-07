@@ -63,7 +63,7 @@ test("six-input category-to-jewelry journey saves queued device photographs only
   try {
     const page = await pageFor(c); await page.goto(origin + "/admin/taxonomy");
     const group = page.getByRole("group", { name: "Create category", exact: true });
-    await group.getByLabel("Name", { exact: true }).fill("LOCAL ONLY entry rings " + token());
+    await group.getByLabel("Category name", { exact: true }).fill("LOCAL ONLY entry rings " + token());
     assert.equal(await group.getByLabel("URL slug", { exact: true }).isVisible(), false);
     const taxonomy = await (await post(page, "/api/admin/catalogue/taxonomy", "Create category")).json();
     const categoryId = taxonomy.id as string; await settled(page);

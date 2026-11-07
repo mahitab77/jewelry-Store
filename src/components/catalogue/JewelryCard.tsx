@@ -4,9 +4,9 @@ import type { PublicProduct } from "../../lib/catalogue/types.ts";
 import { formatEgp, productTypeLabel, publicImageSource } from "../../lib/catalogue/presentation.ts";
 import styles from "./catalogue.module.css";
 
-export function JewelryCard({ product }: { product: PublicProduct }) {
+export function JewelryCard({ product, requestQuotation = false }: { product: PublicProduct; requestQuotation?: boolean }) {
   const source = publicImageSource(product.primaryImage);
-  return <article className={styles.card}>
+  return <article className={`${styles.card}${requestQuotation ? ` ${styles.cardWithRequest}` : ""}`}>
     <Link href={`/jewels/${product.slug}`} className={styles.cardLink}>
       <div className={styles.cardImage}>
         {source ? <Image src={source} alt={product.primaryImage?.altText?.trim() || product.name} fill sizes="(max-width: 639px) 90vw, (max-width: 1023px) 44vw, 360px" className={styles.jewelImage} />
@@ -21,5 +21,6 @@ export function JewelryCard({ product }: { product: PublicProduct }) {
         <span className={styles.cardCta}>Discover the piece <span aria-hidden="true">→</span></span>
       </div>
     </Link>
+    {requestQuotation && product.canEnquire ? <Link className={styles.cardQuotation} href={`/contact?${new URLSearchParams({ intent: "QUOTATION", product: product.slug }).toString()}`}>Request a Quotation<span className="sr-only"> for {product.name}</span></Link> : null}
   </article>;
 }

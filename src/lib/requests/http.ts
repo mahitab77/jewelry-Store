@@ -12,12 +12,12 @@ export async function readRequestJson(request: Request) {
 }
 export async function requestsHttp(request: Request, supplied?: AdminRuntime): Promise<Response> {
   try {
-    if (request.method !== "POST") return requestJson({ message: "Use POST to submit a request. Public request lookup is unavailable." }, 405);
+    if (request.method !== "POST") return requestJson({ message: "Use POST to submit a request. Public request lookup is unavailable.", outcome: "UNKNOWN" }, 405);
     const runtime = supplied ?? getAdminRuntime();
     if (new URL(request.url).search || request.headers.get("origin") !== runtime.config.baseURL || request.headers.get("sec-fetch-site") === "cross-site") throw new RequestError("This request could not be verified.", 403);
     return requestJson(await submitRequest(await readRequestJson(request), runtime));
   } catch (error) {
-    if (error instanceof RequestError) return requestJson({ message: error.message, ...(error.field ? { fieldErrors: { [error.field]: error.message } } : {}) }, error.status);
-    return requestJson({ message: "The request outcome could not be confirmed. Keep this form and its submission reference; recover with the same unchanged submission rather than creating another." }, 503);
+    if (error instanceof RequestError) return requestJson({ message: error.message, outcome: error.outcome, ...(error.submissionId ? { submissionId: error.submissionId } : {}), ...(error.field ? { fieldErrors: { [error.field]: error.message } } : {}) }, error.status);
+    return requestJson({ message: "The request outcome could not be confirmed. Keep this form and its submission reference; recover with the same unchanged submission rather than creating another.", outcome: "UNKNOWN" }, 503);
   }
 }

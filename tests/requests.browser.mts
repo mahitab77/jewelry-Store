@@ -112,22 +112,33 @@ async function stopWatching(page: Page) {
 }
 function searchResponse(page: Page) { return page.waitForResponse((response: {url():string;request():{method():string}}) => response.url() === origin + searchPath && response.request().method() === "POST"); }
 async function heldResponse(page: Page, endpoint: string, method: "GET" | "POST") {
-  const ready = gate(), released = gate(), settled = gate(); let captured = false, failed = false, attempts = 0;
+  const released = gate(), pending = new Set<Promise<void>>(), searchRead = endpoint === origin + searchPath && method === "POST";
+  let progress = gate(), captured = false, failed = false, attempts = 0;
+  const notify = () => { const previous = progress; progress = gate(); previous.resolve(); };
   await page.route(endpoint,async(route: {request():{method():string};fetch(options:{timeout:number}):Promise<{status():number}>;fulfill(value:unknown):Promise<void>;continue():Promise<void>}) => {
-    if (route.request().method() !== method || captured) { await route.continue(); return; }
-    captured = true; attempts++;
+    if (route.request().method() !== method || captured && !searchRead) { await route.continue(); return; }
+    captured = true;
+    const settled = gate(); pending.add(settled.promise);
     try {
       // This is the actual fixture-server response. For POST updates its audit
       // and mutation have already committed before the browser receipt is held.
-      const response = await route.fetch({timeout:15000}); assert.equal(response.status(),200,"The delayed fixture operation must succeed on the server."); ready.resolve();
+      const response = await route.fetch({timeout:15000});
+      if (searchRead && [401,403].includes(response.status())) {
+        try { await route.fulfill({response}); } catch { /* A superseded read may already be aborted. */ }
+        return;
+      }
+      assert.equal(response.status(),200,"The delayed fixture operation must succeed on the server."); attempts++; notify();
+      // Focus and visibility restoration can each start a fresh authorized
+      // search. Hold every successful search receipt behind this same gate;
+      // otherwise a second valid read can bypass the empty-DOM checkpoint.
       await bounded(released.promise,"The deferred fixture response was not released.");
       try { await route.fulfill({response}); } catch { /* Abort on leave/hide is an expected successful defense. */ }
-    } catch { failed = true; ready.resolve(); }
-    finally { settled.resolve(); }
+    } catch { failed = true; notify(); }
+    finally { pending.delete(settled.promise); settled.resolve(); }
   });
   return {
-    async ready() { await bounded(ready.promise,"The expected protected operation did not reach the fixture server."); assert.equal(failed,false,"The protected fixture operation failed before its deferred receipt."); },
-    async release() { released.resolve(); await bounded(settled.promise,"The deferred fixture operation did not settle."); assert.equal(failed,false,"The deferred fixture response failed."); },
+    async ready(expected = 1) { await bounded((async () => { while (attempts < expected && !failed) await progress.promise; })(),"The expected protected operation did not reach the fixture server."); assert.equal(failed,false,"The protected fixture operation failed before its deferred receipt."); },
+    async release() { released.resolve(); await bounded((async () => { while (pending.size) await Promise.all([...pending]); })(),"The deferred fixture operations did not settle."); assert.equal(failed,false,"The deferred fixture response failed."); },
     unblock() { released.resolve(); }, count() { return attempts; },
   };
 }
@@ -396,7 +407,8 @@ test("a real background tab clears private data, denies a revoked session and re
     const denied = searchResponse(page); await page.bringToFront(); assert.equal((await denied).status(),401);
     await page.locator("main").getByRole("alert").filter({hasText:"Private request access is unavailable"}).waitFor(); await assertPrivateEmpty(page,fields);
     await other.bringToFront(); await page.waitForFunction(() => document.visibilityState === "hidden",{},{timeout:15000,polling:100}); await signIn(other,"OWNER");
-    held = await heldResponse(page,origin + searchPath,"POST"); await page.bringToFront(); await held.ready(); await sameDocument(page,identity);
+    held = await heldResponse(page,origin + searchPath,"POST"); await page.bringToFront(); await held.ready();
+    await page.evaluate(() => window.dispatchEvent(new Event("focus"))); await held.ready(2); await sameDocument(page,identity);
     await assertPrivateEmpty(page,fields); await stopWatching(page); await held.release();
     await page.getByRole("button",{name:`Open request ${request.submissionId}`,exact:true}).waitFor(); assert.equal(await page.getByRole("heading",{name:"Request details",exact:true}).count(),0);
     await page.getByRole("button",{name:`Open request ${request.submissionId}`,exact:true}).click(); await page.getByText(request.message,{exact:true}).waitFor();

@@ -28,7 +28,10 @@ async function choices(client: PoolClient): Promise<RequestChoices> {
   return { staff: staff.rows, locations: locations.rows };
 }
 async function detail(client: PoolClient, kind: string, id: string): Promise<AdminRequest | null> {
-  return (await client.query<AdminRequest>(`SELECT q.*,a.display_name AS "assignedName" FROM (${requestUnion}) q LEFT JOIN admin_users a ON a.id=q."assignedAdminId" WHERE q.kind=$1 AND q.id=$2`, [kind, id])).rows[0] ?? null;
+  return (await client.query<AdminRequest>(`SELECT q.*,a.display_name AS "assignedName",
+    CASE WHEN b.id IS NOT NULL THEN jsonb_build_object('id',b.id,'name',b.name,'governorate',b.governorate,'city',b.city_area,'street',b.street_address,'isActive',b.is_active) ELSE NULL END AS "boutiqueLocation"
+    FROM (${requestUnion}) q LEFT JOIN admin_users a ON a.id=q."assignedAdminId"
+    LEFT JOIN boutique_locations b ON b.id=q."boutiqueLocationId" WHERE q.kind=$1 AND q.id=$2`, [kind, id])).rows[0] ?? null;
 }
 export async function listRequests(headers: Headers, value: unknown = {}, runtime: AdminRuntime = getAdminRuntime()): Promise<RequestList> {
   return transaction(headers, async (client) => {

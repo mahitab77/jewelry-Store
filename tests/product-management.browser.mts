@@ -78,13 +78,13 @@ async function createGrouping(page: Page, kind: "category" | "collection", name:
   await page.getByLabel(kind === "category" ? "Choose category" : "Choose collection", { exact: true }).selectOption("");
   const group = page.getByRole("group", { name: `Create ${kind}`, exact: true });
   if (await group.locator("details").getAttribute("open") === null) await group.locator("summary").click();
-  await group.getByLabel("Name", { exact: true }).fill(name); await group.getByLabel("URL slug", { exact: true }).fill(slug);
+  await group.getByLabel(kind === "category" ? "Category name" : "Collection name", { exact: true }).fill(name); await group.getByLabel("URL slug", { exact: true }).fill(slug);
   await group.getByLabel("Description", { exact: true }).fill("Disposable local taxonomy fixture."); await group.getByLabel("Display order", { exact: true }).fill(order);
   if (kind === "category") { await group.getByLabel("Visible category", { exact: true }).check(); if (parent) await group.getByLabel("Parent category", { exact: true }).selectOption({ label: parent }); }
   else await group.getByLabel("Collection status", { exact: true }).selectOption("DRAFT");
   await operation(page, `Create ${kind}`, "taxonomy");
   const saved = page.getByRole("group", { name: `Edit ${kind}`, exact: true });
-  assert.equal(await saved.getByLabel("Name", { exact: true }).inputValue(), name); assert.equal(await saved.getByLabel("URL slug", { exact: true }).inputValue(), slug);
+  assert.equal(await saved.getByLabel(kind === "category" ? "Category name" : "Collection name", { exact: true }).inputValue(), name); assert.equal(await saved.getByLabel("URL slug", { exact: true }).inputValue(), slug);
   assert.equal(await saved.getByLabel("Description", { exact: true }).inputValue(), "Disposable local taxonomy fixture."); assert.equal(await saved.getByLabel("Display order", { exact: true }).inputValue(), order);
   if (kind === "collection") { await saved.getByLabel("Collection status", { exact: true }).selectOption("PUBLISHED"); await operation(page, "Save collection", "taxonomy"); }
 }

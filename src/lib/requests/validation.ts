@@ -1,11 +1,14 @@
 import { egyptianMobile } from "../checkout/egypt.ts";
 import { emailValid } from "../checkout/validation.ts";
 import { cairoInstant } from "./cairo.ts";
-import { requestKinds, type ConsultationChannel, type RequestKind } from "./types.ts";
+import { requestKinds, type ConsultationChannel, type RequestFailureOutcome, type RequestKind } from "./types.ts";
 
 export class RequestError extends Error {
-  readonly status: number; readonly field?: string;
-  constructor(message: string, status = 400, field?: string) { super(message); this.name = "RequestError"; this.status = status; this.field = field; }
+  readonly status: number; readonly field?: string; readonly outcome: RequestFailureOutcome; readonly submissionId?: string;
+  constructor(message: string, status = 400, field?: string, details?: { outcome: RequestFailureOutcome; submissionId?: string }) {
+    super(message); this.name = "RequestError"; this.status = status; this.field = field;
+    this.outcome = details?.outcome ?? "UNKNOWN"; this.submissionId = details?.submissionId;
+  }
 }
 export function fail(message: string, status = 400, field?: string): never { throw new RequestError(message, status, field); }
 export function object(value: unknown, keys: readonly string[]): Record<string, unknown> {
@@ -23,6 +26,11 @@ export function uuid(value: unknown, field = "reference"): string {
   if (typeof value !== "string" || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value)) fail("Use a valid reference.", 400, field);
   return (value as string).toLowerCase();
 }
+export function submissionReference(value: unknown): string {
+  const id = uuid(value, "submissionId");
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id)) fail("Use a fresh secure submission reference.", 400, "submissionId");
+  return id;
+}
 export function requestKind(value: unknown): RequestKind {
   if (!requestKinds.includes(value as RequestKind)) fail("Choose a supported request type.", 400, "kind");
   return value as RequestKind;
@@ -34,8 +42,7 @@ export interface NormalizedRequest {
 }
 export function parseRequest(value: unknown): NormalizedRequest {
   const body = object(value, ["submissionId", "kind", "productId", "variantId", "name", "email", "phone", "message", "channel", "preferredDate", "preferredTime"]);
-  const submissionId = uuid(body.submissionId, "submissionId");
-  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(submissionId)) fail("Use a fresh secure submission reference.", 400, "submissionId");
+  const submissionId = submissionReference(body.submissionId);
   const kind = requestKind(body.kind), name = text(body.name, "name", 100, true), message = text(body.message, "message", 10000, true);
   if ((name.match(/\p{L}/gu) ?? []).length < 2) fail("Enter your name using at least two letters.", 400, "name");
   const email = text(body.email, "email", 254).toLowerCase() || null;

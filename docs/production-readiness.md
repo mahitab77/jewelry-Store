@@ -66,6 +66,48 @@ operations authorization, private-state clearing and the existing commerce flows
 Homepage assets, global styling and layout geometry were preserved; necessary
 quotation wording/destinations changed. These results authorize no hosted action.
 
+## Functional UX corrections and Rings — local implementation
+
+The Rings presentation reuses `/collections/[category]` and activates only for an
+actual visible `rings` taxonomy entry. Its products, publication checks, sorting,
+paging and quotation context remain database-backed. No Rings route, category or
+inventory is manufactured when that taxonomy is absent. The supplied twenty WebP
+assets and their original production-kit manifest are permanent source assets.
+R03 is the responsive preloaded hero; R01 and R12 are lazy editorial studies.
+Their proportions are retained, and none acquires a product identity or claim of
+verified stock, material or certification. Product cards keep their actual media
+and link only to their own published records.
+
+Both homepage catalogue CTAs now reach `/collections`; homepage styling and
+animation are unchanged. Request forms ignore unrelated tracking parameters while
+validating owned context. One in-memory provider preserves drafts and submission
+references through application navigation; it never writes personal fields into
+URLs, history or browser storage. See [database-schema.md](database-schema.md#guest-requests-and-operations)
+for the definitive-absence retry contract and unchanged protected inbox boundary.
+An application navigation warning is not durable storage: reloading or leaving the
+document clears guest drafts. Uncertain requests must recover using the original
+reference and payload, or be explicitly discarded with the duplicate-risk warning.
+
+The existing inbox now focuses opened details and local save feedback, associates
+field errors, identifies unavailable assignees and retains completed/cancelled
+boutique references. Its cached-state privacy clearing remains mandatory. Queued
+photograph descriptions accept blank fallback or trimmed 5–250-character text;
+invalid descriptions stop before automatic upload and retain the selected files.
+Category and collection controls have distinct accessible names; mobile-menu
+Escape returns focus to the toggle.
+
+Local verification on 2026-11-06 covered 339 unique PostgreSQL 18.6 integration
+tests, 157 browser tests and six transport tests (502 total, none skipped).
+These counts combine the complete suite runs with successful targeted reruns.
+The protected inbox test gate now holds every successful overlapping authorization
+read, preserving its empty-DOM and mutation-observer assertions. Homepage desktop
+and mobile viewport/full-page captures match the original checkpoint pixel for
+pixel. Rings and request behavior were checked at 320, 768, 1024 and 1440px.
+
+These source changes authorize no hosted migration, grants, catalogue seeding,
+provider configuration or deployment. Migration0013 and the request grants remain
+separate, target-pinned operator gates before a future hosted quotation release.
+
 ## Staging v3 release preparation — 2026-11-04
 
 The current release target is the existing `la-palme-dor-staging` Cloud Run

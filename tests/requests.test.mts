@@ -81,8 +81,56 @@ test("concurrent duplicate submissions return one receipt with one row and one a
   const receipts = await Promise.all([1, 2, 3].map(() => submitRequest(value, f.runtime)));
   assert.ok(receipts.every((receipt) => receipt.reference === value.submissionId));
   const after = await counts(); assert.equal(after.enquiries - before.enquiries, 1); assert.equal(after.audits - before.audits, 1);
-  await assert.rejects(submitRequest({ ...value, message: "Changed payload with the same reference" }, f.runtime), { status: 409 });
-  await assert.rejects(submitRequest({ ...value, kind: "MODIFICATION", email: `other-${randomUUID()}@boutique.test` }, f.runtime), { status: 409 });
+  await assert.rejects(submitRequest({ ...value, message: "Changed payload with the same reference" }, f.runtime), { status: 409, outcome: "CONFLICT" });
+  await assert.rejects(submitRequest({ ...value, kind: "MODIFICATION", email: `other-${randomUUID()}@boutique.test` }, f.runtime), { status: 409, outcome: "CONFLICT" });
+});
+
+test("validated absence permits corrections under the same UUID and fences a delayed original across request tables", async () => {
+  const original = input({ productId: developmentId(105), variantId: developmentId(205) }), before = await counts();
+  const corrected = { ...original, kind: "BESPOKE" as const, productId: undefined, variantId: undefined, message: "Corrected local bespoke fixture." };
+  const product = (await f.data.query("SELECT status,published_at FROM products WHERE id=$1", [original.productId])).rows[0];
+  let releaseOriginal!: () => void;
+  const body = new ReadableStream<Uint8Array>({ start(controller) {
+    let released = false;
+    releaseOriginal = () => { if (!released) { released = true; controller.enqueue(new TextEncoder().encode(JSON.stringify(original))); controller.close(); } };
+  } });
+  const delayed = new Request(f.authConfig.baseURL + "/api/requests", { method: "POST", headers: { Origin: f.authConfig.baseURL, "Content-Type": "application/json" }, body, duplex: "half" } as RequestInit);
+  const pending = [requestsHttp(delayed, f.runtime)];
+  try {
+    const rejected = await requestsHttp(request(original), f.runtime), proof = await rejected.json();
+    assert.equal(rejected.status, 409); assert.equal(proof.outcome, "NOT_CREATED"); assert.equal(proof.submissionId, original.submissionId);
+    assert.deepEqual(await counts(), before);
+    // The original HTTP request started before the absence proof, but its body
+    // arrives afterwards. Restore its product, then race it with a correction
+    // of another kind. Reusing the UUID fences both existing business tables.
+    await f.data.query("UPDATE products SET status='PUBLISHED',published_at=statement_timestamp()-INTERVAL '1 second' WHERE id=$1", [original.productId]);
+    pending.push(requestsHttp(request(corrected), f.runtime));
+    releaseOriginal();
+    const responses = await Promise.all(pending), bodies = await Promise.all(responses.map((response) => response.json()));
+    assert.deepEqual(responses.map((response) => response.status).sort(), [200, 409]);
+    assert.equal(bodies[responses.findIndex((response) => response.status === 200)].reference, original.submissionId);
+    assert.equal(bodies[responses.findIndex((response) => response.status === 409)].outcome, "CONFLICT");
+    const saved = (await f.data.query("SELECT 'QUOTATION' AS kind,message FROM product_enquiries WHERE id=$1 UNION ALL SELECT 'BESPOKE',message FROM bespoke_requests WHERE id=$1 UNION ALL SELECT 'CONSULTATION',message FROM appointment_requests WHERE id=$1", [original.submissionId])).rows;
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].message, saved[0].kind === "QUOTATION" ? original.message : corrected.message);
+    const after = await counts(); assert.equal(after.enquiries + after.bespoke + after.appointments - before.enquiries - before.bespoke - before.appointments, 1); assert.equal(after.audits - before.audits, 1);
+  } finally {
+    releaseOriginal();
+    await Promise.allSettled(pending);
+    await f.data.query("UPDATE products SET status=$2,published_at=$3 WHERE id=$1", [original.productId, product.status, product.published_at]);
+  }
+});
+
+test("field validation proves absence only for a valid unused submission UUID", async () => {
+  const value = input(), before = await counts();
+  const invalid = await requestsHttp(request({ ...value, email: "invalid@" }), f.runtime), failure = await invalid.json();
+  assert.equal(invalid.status, 400); assert.equal(failure.outcome, "NOT_CREATED"); assert.equal(failure.submissionId, value.submissionId); assert.ok(failure.fieldErrors.email);
+  assert.deepEqual(await counts(), before);
+  assert.equal((await submitRequest(value, f.runtime)).reference, value.submissionId);
+  const reused = await requestsHttp(request({ ...value, email: "invalid@" }), f.runtime);
+  assert.equal(reused.status, 409); assert.equal((await reused.json()).outcome, "CONFLICT");
+  const unverified = await requestsHttp(request({ ...value, submissionId: "invalid" }), f.runtime), unknown = await unverified.json();
+  assert.equal(unverified.status, 400); assert.equal(unknown.outcome, "UNKNOWN"); assert.equal(unknown.submissionId, undefined);
 });
 
 test("uncertain receipt recovery survives later catalogue edits and retains the original public-only snapshot", async () => {
@@ -155,7 +203,25 @@ test("Boutique confirmation requires an active verified destination and records 
   assert.equal(locationAudit.before.boutiqueLocationId, location); assert.equal(locationAudit.after.boutiqueLocationId, nextLocation);
   await assert.rejects(update(value.kind, value.submissionId, { status: "COMPLETED", boutiqueLocationId: randomUUID() }), { status: 400 });
   await update(value.kind, value.submissionId, { status: "COMPLETED" });
+  await f.data.query("UPDATE boutique_locations SET is_active=false,street_address='Current retained boutique street' WHERE id=$1", [nextLocation]);
+  const retained = await detail(value.kind, value.submissionId);
+  assert.equal(retained.request.status, "COMPLETED");
+  assert.deepEqual(retained.request.boutiqueLocation, { id: nextLocation, name: "Local alternate boutique", governorate: "Cairo", city: "Local area", street: "Current retained boutique street", isActive: false });
+  assert.ok(retained.locations.every((entry) => entry.id !== nextLocation));
   assert.equal((await f.data.query("SELECT id FROM product_enquiries WHERE id=$1", [value.submissionId])).rowCount, 0);
+});
+
+test("cancelled boutique consultations retain inactive location details without reopening choices or arrangements", async () => {
+  const value = input({ kind: "CONSULTATION", channel: "BOUTIQUE" }), location = randomUUID();
+  await f.data.query("INSERT INTO boutique_locations(id,name,governorate,city_area,street_address,is_active) VALUES($1,'Local cancelled boutique','Cairo','Local cancelled area','Local cancelled fixture street',true)", [location]);
+  await submitRequest(value, f.runtime);
+  await update(value.kind, value.submissionId, { status: "CONFIRMED", agreed: true, confirmedDate: "2030-02-10", confirmedTime: "14:00", boutiqueLocationId: location });
+  await update(value.kind, value.submissionId, { status: "CANCELLED" });
+  await f.data.query("UPDATE boutique_locations SET is_active=false WHERE id=$1", [location]);
+  const retained = await detail(value.kind, value.submissionId);
+  assert.equal(retained.request.status, "CANCELLED"); assert.equal(retained.request.boutiqueLocation?.id, location); assert.equal(retained.request.boutiqueLocation?.isActive, false);
+  assert.ok(retained.locations.every((entry) => entry.id !== location));
+  await assert.rejects(update(value.kind, value.submissionId, { status: "CONFIRMED", agreed: true }), { status: 409 });
 });
 
 test("request insertion rolls back when audit fails while distributed rejection counters remain consumed", async () => {
@@ -182,6 +248,8 @@ test("distributed contact throttling limits submissions across independent reque
   const email = `limit-${randomUUID()}@boutique.test`;
   for (let i = 0; i < 5; i++) await submitRequest(input({ email }), f.runtime);
   await assert.rejects(submitRequest(input({ email }), f.runtime), { status: 429 });
+  const limited = await requestsHttp(request(input({ email })), f.runtime), failure = await limited.json();
+  assert.equal(limited.status, 429); assert.equal(failure.outcome, "UNKNOWN"); assert.equal(failure.submissionId, undefined);
   assert.equal((await f.data.query("SELECT count(*)::INT AS n FROM product_enquiries WHERE contact_email=$1", [email])).rows[0].n, 5);
 });
 

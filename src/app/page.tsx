@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import { BespokeProcessCarousel } from "@/components/BespokeProcessCarousel";
 import { HeroRingStage } from "@/components/HeroRingStage";
@@ -109,9 +110,9 @@ export default async function Home() {
             <a href="/appointment" className="hero-cta hero-primary-button">
               Consult the Designer
             </a>
-            <a href="#catalog" className="hero-cta hero-secondary-button">
+            <Link href="/collections" className="hero-cta hero-secondary-button">
               Explore the Catalog
-            </a>
+            </Link>
           </div>
         </div>
       </section>
@@ -258,12 +259,12 @@ export default async function Home() {
             >
               Request a Consultation
             </a>
-            <a
-              href="#catalog"
+            <Link
+              href="/collections"
               className="cta-secondary inline-flex min-h-12 items-center justify-center border border-(--border) px-6 text-xs font-semibold uppercase tracking-[0.14em] text-ivory transition duration-300 hover:border-gold hover:text-gold sm:px-7 sm:text-sm sm:tracking-[0.16em]"
             >
               View Catalog
-            </a>
+            </Link>
           </div>
         </div>
       </section>

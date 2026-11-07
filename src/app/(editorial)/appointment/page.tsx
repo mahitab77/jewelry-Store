@@ -12,7 +12,7 @@ export default function AppointmentPage({ searchParams }: { searchParams: Promis
       image={{ src: "/images/soft-necklace-no-bg.png", alt: "Gemstone necklace composition by La Palme d’Or Gems" }}>
       <p>Begin with what matters to you: a piece you would like to see, an idea for a commission, or a question about a stone. Personal arrangements require confirmation from the boutique.</p>
     </EditorialHero>
-    <div className="maison-container"><RequestEntry searchParams={searchParams} consultation /><ContactOptions appointment /></div>
+    <div className="maison-container lp-transition-content"><RequestEntry searchParams={searchParams} consultation /><ContactOptions appointment /></div>
     <EditorialSection eyebrow="Ideas for a conversation" title="What would you like to explore?" light>
       <p>These are possible conversation topics, not confirmed bookings or a promise of service availability.</p>
       <div className={styles.cards}>

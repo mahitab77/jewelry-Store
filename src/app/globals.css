@@ -115,53 +115,65 @@ svg {
 
 .lp-transition {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   width: 100%;
-  height: clamp(180px, 16vw, 320px);
+  --lp-transition-space: clamp(180px, 16vw, 320px);
+  --lp-transition-span: clamp(340px, 36vw, 500px);
+  height: var(--lp-transition-space);
   margin: -1px 0;
   border: 0;
   box-shadow: none;
   pointer-events: none;
+  /* Paint through adjoining sections without adding an empty spacer. */
 }
 
-.lp-transition-black-to-cream {
-  background: linear-gradient(
-    to bottom,
-    var(--lp-black) 0%,
-    #070605 8%,
-    #0d0a08 14%,
-    #15110d 22%,
-    #1f1812 30%,
-    #2e241a 40%,
-    #4a3b2a 50%,
-    #6d5a45 60%,
-    #8f7a62 68%,
-    #a9977d 76%,
-    #c4b49a 84%,
-    #d8ccb9 92%,
-    #e8dfd0 96%,
-    var(--lp-cream) 100%
-  );
+.lp-transition::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: calc((var(--lp-transition-space) - var(--lp-transition-span)) * var(--lp-transition-overlap, 0.7));
+  height: var(--lp-transition-span);
+  pointer-events: none;
+  --lp-transition-stops:
+    var(--lp-black) 0%, #0e0c0a 14%, #211c16 25%, #3c332a 38%,
+    #5e5142 50%, #8b7860 62%, #b8a38a 74%, #d8c9b5 84%,
+    #e9dfcf 94%, var(--lp-cream) 100%;
+  background:
+    radial-gradient(
+      ellipse 100% 34% at 50% var(--lp-transition-glow-y, 64%),
+      rgba(197, 163, 106, 0.16) 0%,
+      rgba(197, 163, 106, 0.06) 45%,
+      rgba(197, 163, 106, 0) 100%
+    ),
+    linear-gradient(var(--lp-transition-direction, 180deg), var(--lp-transition-stops));
 }
 
 .lp-transition-cream-to-black {
-  background: linear-gradient(
-    to bottom,
-    var(--lp-cream) 0%,
-    #e8dfd0 6%,
-    #d8ccb9 12%,
-    #c4b49a 20%,
-    #a9977d 28%,
-    #8f7a62 38%,
-    #6d5a45 48%,
-    #4a3b2a 58%,
-    #2e241a 68%,
-    #1f1812 76%,
-    #15110d 84%,
-    #0d0a08 92%,
-    #070605 96%,
-    var(--lp-black) 100%
-  );
+  --lp-transition-direction: 0deg;
+  --lp-transition-overlap: 0.3;
+  --lp-transition-glow-y: 36%;
+}
+
+/* Keep the carousel's small gold heading on its original ivory surface. */
+.lp-transition-black-to-cream:has(+ .bespoke-carousel-section) {
+  --lp-transition-overlap: 0.8;
+}
+
+/* The photographed homepage hero needs a transparent entry into near-black. */
+.hero-section + .lp-transition-black-to-cream::before {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 16%);
+  mask-image: linear-gradient(to bottom, transparent, black 16%);
+}
+
+.lp-transition-content {
+  position: relative;
+  z-index: 3;
+}
+
+@media (max-width: 639px) {
+  .lp-transition {
+    --lp-transition-span: clamp(300px, 45svh, 360px);
+  }
 }
 
 .text-gold {
@@ -384,7 +396,7 @@ svg {
 
 .hero-section {
   position: relative;
-  isolation: isolate;
+  isolation: auto;
   width: 100%;
   min-height: clamp(30rem, 82svh, 48rem);
   padding-block: clamp(2.25rem, 5vw, 4rem);
@@ -876,7 +888,7 @@ svg {
 
 .signature-section {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   color: var(--ivory);
   background: var(--lp-black);
 }
@@ -887,8 +899,8 @@ svg {
 
 .signature-inner {
   position: relative;
-  isolation: isolate;
-  z-index: 2;
+  isolation: auto;
+  z-index: auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, min(36rem, min(42vw, 100%)));
   align-items: center;
@@ -902,7 +914,7 @@ svg {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   pointer-events: none;
   background:
     radial-gradient(ellipse at 76% 48%, rgba(247, 240, 230, 0.08), transparent 19rem),
@@ -924,6 +936,8 @@ svg {
 }
 
 .signature-copy {
+  position: relative;
+  z-index: 3;
   max-width: 42rem;
 }
 
@@ -1003,6 +1017,7 @@ svg {
 }
 
 .signature-frame-wrap {
+  z-index: 3;
   display: grid;
   place-items: center;
   min-height: clamp(29rem, 47vw, 41rem);
@@ -1143,17 +1158,25 @@ svg {
 
 .heritage-section {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   background: var(--lp-black);
   color: #1d1712;
 }
 
 .heritage-main {
   position: relative;
-  isolation: isolate;
+  isolation: auto;
   overflow: hidden;
+  --lp-heritage-edge: clamp(112px, 10vw, 160px);
   padding: clamp(72px, 8vw, 130px) 0;
   background:
+    linear-gradient(
+      to bottom,
+      var(--lp-cream) calc(var(--lp-heritage-edge) - 48px),
+      transparent var(--lp-heritage-edge),
+      transparent calc(100% - var(--lp-heritage-edge)),
+      var(--lp-cream) calc(100% - var(--lp-heritage-edge) + 48px)
+    ),
     radial-gradient(ellipse 120% 55% at 50% 0%, rgba(217, 189, 122, 0.18), transparent 52%),
     radial-gradient(ellipse 70% 50% at 8% 55%, rgba(255, 252, 246, 0.65), transparent 48%),
     radial-gradient(ellipse 55% 45% at 92% 35%, rgba(239, 230, 214, 0.45), transparent 42%),
@@ -1209,7 +1232,7 @@ svg {
 
 .heritage-container {
   position: relative;
-  z-index: 1;
+  z-index: 3;
   width: min(1180px, calc(100% - 2 * var(--page-inline)));
   margin: 0 auto;
   display: grid;
@@ -1259,7 +1282,7 @@ svg {
 
 .heritage-eyebrow {
   margin-bottom: clamp(1rem, 1.8vw, 1.45rem);
-  color: #8a6835;
+  color: #74531f;
 }
 
 .heritage-heading-block::before {
@@ -1443,7 +1466,7 @@ svg {
 
 .bespoke-carousel-section {
   position: relative;
-  isolation: isolate;
+  isolation: auto;
   overflow-x: clip;
   overflow-y: visible;
   box-sizing: border-box;
@@ -1484,7 +1507,7 @@ svg {
 
 .bespoke-carousel-section > .maison-container {
   position: relative;
-  z-index: 1;
+  z-index: 3;
 }
 
 @media (min-width: 641px) {
@@ -1512,7 +1535,7 @@ svg {
 
 .bespoke-carousel-eyebrow {
   margin: 0 0 0.4rem;
-  color: var(--gold-deep);
+  color: #74531f;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.28em;

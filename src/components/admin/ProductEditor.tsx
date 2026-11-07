@@ -31,6 +31,7 @@ function Field({ label, value, change, type = "text", readOnly = false, disabled
 }
 
 function fieldContext(path: string) {
+  if (path.startsWith("selectedPhotos.")) return "Selected photograph description";
   const names: Record<string, string> = { name: "Jewelry Name", description: "Description", categoryIds: "Jewelry Category", slug: "URL slug", priceEGP: "Price (EGP)", sku: "SKU", size: "Size", configuration: "Configuration", metalType: "Metal", metalPurity: "Metal purity", metalColor: "Metal colour", metalWeightGrams: "Metal weight (grams)", metalWeightBasis: "Metal weight basis", displayOrder: "Display order", initialStock: "Available Pieces", stockReason: "Initial stock reason", type: "Stone type", shape: "Shape / cut", color: "Colour", caratWeight: "Carat weight", totalCaratWeight: "Total carat weight", quantity: "Gemstone quantity", laboratory: "Laboratory name" };
   const variant = /^product\.variants\.(\d+)(?:\.gemstones\.(\d+))?\.(\w+)$/.exec(path);
   if (variant) return `Configuration ${Number(variant[1]) + 1}${variant[2] === undefined ? "" : `, gemstone ${Number(variant[2]) + 1}`} — ${names[variant[3]] ?? variant[3]}`;
@@ -153,6 +154,16 @@ export function ProductEditor({ product, choices, initialHistory, uploadsConfigu
     const selected = selectedPhotos.find((photo) => photo.key === key);
     if (selected) { URL.revokeObjectURL(selected.preview); previewURLs.current.delete(selected.preview); }
   }
+  function validateSelectedPhotos(queue: SelectedPhoto[]) {
+    const errors: Record<string,string> = {};
+    for (const photo of queue) {
+      const description = photo.altText.trim();
+      if (description && (description.length < 5 || description.length > 250)) errors[`selectedPhotos.${photo.key}.altText`] = "Leave the description blank, or use 5–250 characters describing visible details.";
+    }
+    if (!Object.keys(errors).length) return true;
+    setFieldErrors(errors); setMessage(""); setError("Review the selected photograph description before saving or uploading. Your photographs remain selected on this device."); focusFailure(errors);
+    return false;
+  }
   async function uploadSelection(saved: EditorProduct, queue: SelectedPhoto[]): Promise<EditorProduct | null> {
     let current = saved;
     for (const [index, photo] of queue.entries()) {
@@ -174,7 +185,8 @@ export function ProductEditor({ product, choices, initialHistory, uploadsConfigu
     return current;
   }
   async function save(action: ProductAction) {
-    if (mediaDirty) return;
+    if (busy.current || uncertain || mediaDirty) return;
+    if (action === "save" && selectedPhotos.length && uploadsConfigured && !quantityDirty && !validateSelectedPhotos(selectedPhotos)) return;
     if ((action === "archive" || action === "unpublish") && !window.confirm(`${action === "archive" ? "Archive" : "Unpublish"} this product? It will disappear from public browsing.`)) return;
     await operate(async () => {
       const saved = await mutate(record ? `/${record.id}/save` : "", { product: draft, revision: record?.revision, action }, false, quantityDirty);
@@ -184,6 +196,7 @@ export function ProductEditor({ product, choices, initialHistory, uploadsConfigu
   }
   async function uploadSelected() {
     if (!record || dirty || mediaDirty || quantityDirty || !uploadsConfigured || !selectedPhotos.length) return;
+    if (!validateSelectedPhotos(selectedPhotos)) return;
     await operate(async () => { await uploadSelection(record, selectedPhotos); });
   }
   function selectPhotos(event: ChangeEvent<HTMLInputElement>) {
@@ -273,7 +286,7 @@ export function ProductEditor({ product, choices, initialHistory, uploadsConfigu
         {selectedPhotos.length ? <><h3>Selected on this device ({selectedPhotos.length})</h3><div className={styles.photos}>{selectedPhotos.map((photo, index) => <div className={styles.photoCard} key={photo.key}>
           <div className={styles.photoStage}><Image className={entry.preview} src={photo.preview} alt={`Selected photograph ${index + 1}: ${photo.file.name}`} fill unoptimized sizes="(max-width:767px) 90vw, 480px" /></div>
           <p className={entry.filename}>{photo.file.name}</p>
-          <details className={entry.photoDetails}><summary>Photograph description (optional)</summary><Field label={`Description for selected photograph ${index + 1}`} value={photo.altText} disabled={pending} maxLength={250} change={(altText) => setSelectedPhotos((all) => all.map((item) => item.key === photo.key ? { ...item, altText } : item))} help="If blank, the jewelry name and photograph number are used. Add only factual visible details." /></details>
+          <details className={entry.photoDetails}><summary>Photograph description (optional)</summary><Field label={`Description for selected photograph ${index + 1}`} {...feedbackFor(`selectedPhotos.${photo.key}.altText`)} value={photo.altText} disabled={pending} maxLength={250} change={(altText) => setSelectedPhotos((all) => all.map((item) => item.key === photo.key ? { ...item, altText } : item))} help="Leave blank to use the jewelry name and photograph number, or enter 5–250 characters describing factual visible details." /></details>
           <button type="button" className={button} disabled={pending} onClick={() => removeSelected(photo.key)}>Remove selected photograph {index + 1}</button>
         </div>)}</div>{record ? <button type="button" className={primaryButton} disabled={pending || uncertain || dirty || mediaDirty || quantityDirty || !uploadsConfigured} onClick={() => void uploadSelected()}>Upload selected photographs</button> : <p className={styles.help}>Save Draft first. Configured uploads will follow only after the saved product is confirmed.</p>}</> : null}
         <div className={styles.photos}>{photos.map((photo, index) => <div className={styles.photoCard} key={photo.id}><div className={styles.photoStage}><ProductPhoto src={photo.provider ? `/api/admin/catalogue/products/${record?.id}/photos/${photo.id}` : photo.reference} alt={photo.altText} fill sizes="(max-width:767px) 90vw, 480px" className={styles.photo} /></div>

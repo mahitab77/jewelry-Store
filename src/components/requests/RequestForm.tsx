@@ -1,48 +1,64 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, type FormEvent } from "react";
 import type { PublicProductDetail } from "../../lib/catalogue/types.ts";
 import type { PublicRequestInput, RequestKind } from "../../lib/requests/types.ts";
 import { variantOptionLabels } from "../../lib/catalogue/presentation.ts";
-import { useCatalogueNavigationGuard } from "../admin/useCatalogueNavigationGuard";
+import { useRequestDraft, useRequestNavigationGuard } from "./RequestExperienceProvider";
 import styles from "./request.module.css";
 
 export type RequestProduct = Pick<PublicProductDetail, "id" | "name" | "slug" | "variants">;
 type Draft = { kind: RequestKind; name: string; email: string; phone: string; message: string; channel: "ZOOM" | "BOUTIQUE"; preferredDate: string; preferredTime: string; variantId: string };
+type RequestState = { draft: Draft; pending: boolean; attempt: PublicRequestInput | null; uncertain: boolean; reference: string; error: string; fieldErrors: Record<string, string>; contextUnavailable: boolean };
 const labels: Record<RequestKind, string> = { QUOTATION: "Request a Quotation", MODIFICATION: "Request Changes", BESPOKE: "A completely bespoke design", CONSULTATION: "Consult the Designer" };
-export function RequestForm({ product, initialKind = "BESPOKE", initialVariant = "", consultation = false }: { product?: RequestProduct; initialKind?: RequestKind; initialVariant?: string; consultation?: boolean }) {
-  const [draft, setDraft] = useState<Draft>({ kind: consultation ? "CONSULTATION" : initialKind, name: "", email: "", phone: "", message: "", channel: "ZOOM", preferredDate: "", preferredTime: "", variantId: initialVariant || product?.variants[0]?.id || "" });
-  const [pending, setPending] = useState(false), [attempt, setAttempt] = useState<PublicRequestInput | null>(null), [uncertain, setUncertain] = useState(false);
-  const [reference, setReference] = useState(""), [error, setError] = useState(""), [fieldErrors, setFieldErrors] = useState<Record<string,string>>({});
-  const [contextUnavailable, setContextUnavailable] = useState(false);
-  const form = useRef<HTMLFormElement>(null), notice = useRef<HTMLParagraphElement>(null), busy = useRef(false), focus = useRef(false);
-  useCatalogueNavigationGuard(!reference && Boolean(pending || uncertain || draft.name || draft.email || draft.phone || draft.message), uncertain ? "Receipt is uncertain. Keep this page open to retry the same request safely. Leave this page?" : "Leave this page and discard the request details you entered?");
+export function RequestForm({ draftKey, product, initialKind = "BESPOKE", initialVariant = "", consultation = false }: { draftKey: string; product?: RequestProduct; initialKind?: RequestKind; initialVariant?: string; consultation?: boolean }) {
+  const initial = (): RequestState => ({ draft: { kind: consultation ? "CONSULTATION" : initialKind, name: "", email: "", phone: "", message: "", channel: "ZOOM", preferredDate: "", preferredTime: "", variantId: initialVariant || product?.variants[0]?.id || "" }, pending: false, attempt: null, uncertain: false, reference: "", error: "", fieldErrors: {}, contextUnavailable: false });
+  const [state, update, current] = useRequestDraft<RequestState>(draftKey, initial);
+  const { draft, pending, attempt, uncertain, reference, error, fieldErrors, contextUnavailable } = state;
+  const form = useRef<HTMLFormElement>(null), notice = useRef<HTMLParagraphElement>(null), receipt = useRef<HTMLHeadingElement>(null), title = useRef<HTMLHeadingElement>(null), focus = useRef(false);
+  const dirty = !reference && Boolean(pending || uncertain || attempt || draft.name || draft.email || draft.phone || draft.message || draft.preferredDate || draft.preferredTime || draft.kind !== (consultation ? "CONSULTATION" : initialKind) || draft.channel !== "ZOOM" || draft.variantId !== (initialVariant || product?.variants[0]?.id || ""));
+  useRequestNavigationGuard(dirty, uncertain || pending ? "Receipt is pending or uncertain. Keep this page open to retry the same request reference safely. Back restores these details during browsing within this site; reloading or leaving the site clears them. Leave this page?" : contextUnavailable ? "Correct this request here to keep its existing reference. Choosing another piece starts a separate request; a delayed earlier submission could still arrive and create a duplicate. Back restores these details while browsing within this site. Leave this request page?" : "Leave this request page? Back restores your entered details during browsing within this site; reloading or leaving the site clears them. Use Discard request details to clear them explicitly.");
   useEffect(() => { if (pending || !focus.current) return; focus.current = false; const key = Object.keys(fieldErrors)[0], target = key ? form.current?.elements.namedItem(key) as HTMLElement | null : null; if (target && typeof target.focus === "function") target.focus(); else notice.current?.focus(); }, [pending, error, fieldErrors]);
-  const change = (value: Partial<Draft>) => setDraft((current) => ({ ...current, ...value }));
+  useEffect(() => { if (reference) { receipt.current?.focus({ preventScroll: true }); receipt.current?.scrollIntoView({ behavior: "instant", block: "center" }); } }, [reference]);
+  const change = (value: Partial<Draft>) => update((current) => ({ ...current, draft: { ...current.draft, ...value } }));
   const controlLabels: Record<keyof Draft,string> = { kind: "What would you like to do?", variantId: "Selected configuration", name: "Your name (required)", email: draft.kind === "CONSULTATION" && draft.channel === "ZOOM" ? "Email (required for Zoom)" : "Email", phone: "Telephone", message: draft.kind === "MODIFICATION" ? "Requested changes (required)" : "Your message (required)", channel: "Consultation preference", preferredDate: "Preferred date (Africa/Cairo)", preferredTime: "Preferred time (Africa/Cairo)" };
   const attributes = (name: keyof Draft) => ({ name, "aria-label": controlLabels[name], "aria-invalid": Boolean(fieldErrors[name]) || undefined, "aria-describedby": fieldErrors[name] ? `request-${name}-error` : undefined });
   const feedback = (name: keyof Draft) => fieldErrors[name] ? <span id={`request-${name}-error`} className={styles.error}>{fieldErrors[name]}</span> : null;
   async function send(retry = false) {
-    if (busy.current || reference || uncertain && !retry) return;
-    const input: PublicRequestInput = retry && attempt ? attempt : { submissionId: crypto.randomUUID(), kind: draft.kind, name: draft.name, email: draft.email, phone: draft.phone, message: draft.message,
+    if (current().pending || current().reference || current().uncertain && !retry) return;
+    const input: PublicRequestInput = retry && attempt ? attempt : { submissionId: attempt?.submissionId || crypto.randomUUID(), kind: draft.kind, name: draft.name, email: draft.email, phone: draft.phone, message: draft.message,
       ...(product && draft.kind !== "BESPOKE" ? { productId: product.id, variantId: draft.variantId } : {}), ...(draft.kind === "CONSULTATION" ? { channel: draft.channel, preferredDate: draft.preferredDate, preferredTime: draft.preferredTime } : {}) };
-    busy.current = true; setPending(true); setAttempt(input); setError(""); setFieldErrors({}); setContextUnavailable(false);
+    update((current) => ({ ...current, pending: true, attempt: input, error: "", fieldErrors: {}, contextUnavailable: false }));
+    // Async responses continue updating this canonical draft while the user
+    // browses. Explicit discard abandons its UUID; a late response for that old
+    // attempt must never overwrite a cleared draft or a newer submission.
+    const active = () => current().attempt?.submissionId === input.submissionId;
     try {
       const response = await fetch("/api/requests", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), signal: AbortSignal.timeout(20000) });
-      const result = await response.json() as { reference?: string; message?: string; fieldErrors?: Record<string,string> };
-      if (response.ok && result.reference === input.submissionId) { setReference(result.reference); setAttempt(null); setUncertain(false); setDraft((current) => ({ ...current, name: "", email: "", phone: "", message: "", preferredDate: "", preferredTime: "" })); return; }
-      if (!retry && response.status === 409 && (result.fieldErrors?.productId || result.fieldErrors?.variantId)) {
-        setAttempt(null); setContextUnavailable(true); setFieldErrors(result.fieldErrors); setError((result.message || "The selected piece or configuration is unavailable.") + " No request was created. Choose a currently published piece before sending a new request."); focus.current = true; return;
+      const result = await response.json() as { reference?: string; message?: string; fieldErrors?: Record<string,string>; outcome?: string; submissionId?: string };
+      if (!active()) return;
+      if (response.ok && result.reference === input.submissionId) { update((current) => ({ ...current, reference: result.reference!, attempt: null, pending: false, uncertain: false, draft: { ...current.draft, name: "", email: "", phone: "", message: "", preferredDate: "", preferredTime: "" } })); return; }
+      // A status code cannot establish whether an earlier attempt committed.
+      // The server proves absence under the same UUID lock before permitting
+      // correction. Retain that UUID so a delayed original cannot create a
+      // second request after the corrected details are sent.
+      if (!response.ok && result.outcome === "NOT_CREATED" && result.submissionId === input.submissionId) {
+        const unavailable = Boolean(result.fieldErrors?.productId || result.fieldErrors?.variantId);
+        update((current) => ({ ...current, uncertain: false, contextUnavailable: unavailable, fieldErrors: result.fieldErrors ?? {}, error: (result.message || "Review your request before sending it.") + " No request was created." + (unavailable ? " Change the configuration or request type here to correct this request with its existing reference. Choosing another piece begins a separate request." : " You can correct these details and send again safely.") }));
+        focus.current = true; return;
       }
-      if (!retry && [400, 429].includes(response.status)) { setAttempt(null); setFieldErrors(result.fieldErrors ?? {}); setError(result.message || "Review your request before sending it."); focus.current = true; return; }
       throw new Error();
-    } catch { setUncertain(true); setError("We could not confirm receipt. Your request may already have been received. Keep this page open and use Retry this same request to check safely; it sends the identical request reference and details. Do not start a second request."); focus.current = true; }
-    finally { busy.current = false; setPending(false); }
+    } catch { if (active()) { update((current) => ({ ...current, uncertain: true, error: "We could not confirm receipt. Your request may already have been received. Keep this page open and use Retry this same request to check safely; it sends the identical request reference and details. Do not start a second request." })); focus.current = true; } }
+    finally { if (active()) update((current) => ({ ...current, pending: false })); }
   }
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); void send(); }
-  if (reference) return <section className={styles.root} aria-labelledby="request-received"><h2 id="request-received">Your request has been received.</h2><p role="status">Our team will contact you to discuss the details. Pricing and appointments are subject to confirmation.</p><p className={styles.reference}>Request reference: <strong>{reference}</strong></p><p>No order, final quotation or appointment has been confirmed. No automatic email or meeting invitation is promised.</p><div className={styles.actions}><Link className={`hero-cta hero-secondary-button ${styles.button}`} href="/collections">Explore the collections</Link></div></section>;
+  function discard() {
+    const message = uncertain || pending ? "Receipt is pending or uncertain. This request may already have been received. Discarding removes these details and the same-reference retry from this tab; it does not cancel any received request. Starting again could create a duplicate. Discard request details?" : "Discard the request details you entered? This clears the draft from this tab.";
+    if (window.confirm(message)) { update(initial()); focus.current = false; title.current?.focus({ preventScroll: true }); title.current?.scrollIntoView({ behavior: "instant", block: "center" }); }
+  }
+  if (reference) return <section className={styles.root} aria-labelledby="request-received"><h2 ref={receipt} tabIndex={-1} id="request-received">Your request has been received.</h2><p role="status">Our team will contact you to discuss the details. Pricing and appointments are subject to confirmation.</p><p className={styles.reference}>Request reference: <strong>{reference}</strong></p><p>No order, final quotation or appointment has been confirmed. No automatic email or meeting invitation is promised.</p><div className={styles.actions}><Link className={`hero-cta hero-secondary-button ${styles.button}`} href="/collections">Explore the collections</Link></div></section>;
   const optionLabels = product ? variantOptionLabels(product.variants) : [];
-  return <section className={styles.root} aria-labelledby="request-title"><h2 id="request-title">Begin a conversation.</h2><p>Request a quotation, discuss changes, or arrange a designer consultation. You do not need an account.</p>
+  return <section className={styles.root} aria-labelledby="request-title"><h2 ref={title} tabIndex={-1} id="request-title">Begin a conversation.</h2><p>Request a quotation, discuss changes, or arrange a designer consultation. You do not need an account.</p>
     {product && draft.kind !== "BESPOKE" ? <div className={styles.context}><p>Selected piece: <Link href={`/jewels/${product.slug}`}>{product.name}</Link></p><p className={styles.help}>Your selected configuration is saved with the request. Availability and pricing will be discussed personally.</p></div> : null}
     {error ? <p ref={notice} tabIndex={-1} role="alert" className={styles.notice}>{error}</p> : null}
     {contextUnavailable ? <p><Link className={`hero-cta hero-secondary-button ${styles.button}`} href="/collections">Choose a published piece</Link></p> : null}
@@ -58,5 +74,6 @@ export function RequestForm({ product, initialKind = "BESPOKE", initialVariant =
       <p className={styles.help}>Your contact details and message are stored privately for authorized boutique operations staff to handle this request. Do not include payment details, identity documents or sensitive information. This form does not accept attachments.</p>
       <button type="submit" className={`hero-cta hero-primary-button ${styles.button}`}>{pending ? "Sending…" : "Send request"}</button>
     </fieldset></form>
+    {dirty ? <div className={styles.actions}><button type="button" className={`hero-cta hero-secondary-button ${styles.button}`} onClick={discard}>Discard request details</button></div> : null}
   </section>;
 }
