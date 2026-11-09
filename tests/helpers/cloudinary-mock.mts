@@ -36,9 +36,11 @@ export function cloudinaryMock() {
       return Response.json({ result: found ? "ok" : "not found" });
     }
     const form = await request.formData(), file = form.get("file");
-    if ([...form.keys()].some((key) => !["file", "public_id", "overwrite", "unique_filename"].includes(key)) ||
-      ["file", "public_id", "overwrite", "unique_filename"].some((key) => form.getAll(key).length !== 1) ||
-      form.get("overwrite") !== "false" || form.get("unique_filename") !== "false") throw new Error("Uploads must preserve the server-owned identifier without overwriting assets.");
+    if ([...form.keys()].some((key) => !["file", "public_id", "overwrite", "unique_filename", "asset_folder"].includes(key)) ||
+      ["file", "public_id", "overwrite", "unique_filename", "asset_folder"].some((key) => form.getAll(key).length !== 1) ||
+      form.get("asset_folder") !== "la-palme/catalogue" ||
+      !/^la-palme\/catalogue\/[0-9a-f-]{36}\/[0-9a-f-]{36}$/.test(String(form.get("public_id"))) ||
+      form.get("overwrite") !== "false" || form.get("unique_filename") !== "false") throw new Error("Uploads must use the exact asset folder and preserve the server-owned identifier without overwriting assets.");
     calls.push({ operation: "upload", publicId: "pending" });
     if (failures.upload) return new Response(null, { status: 503 });
     if (!(file instanceof File)) throw new Error("Expected server-supplied bytes, not a remote URL.");
@@ -48,7 +50,7 @@ export function cloudinaryMock() {
     assets.set(publicId, { asset, bytes }); calls[calls.length - 1].publicId = publicId;
     if (failures.afterUpload) throw new Error("Simulated lost provider response after upload.");
     return Response.json({ public_id: publicId, asset_id: asset.assetId, version: 1, format, width: asset.width, height: asset.height, bytes: bytes.byteLength,
-      resource_type: "image", type: "authenticated", signature: failures.forged ? "0".repeat(40) : createHash("sha1").update(`public_id=${publicId}&version=1${mockCloudinaryConfiguration.apiSecret}`).digest("hex") });
+      resource_type: "image", type: "authenticated", asset_folder: String(form.get("asset_folder")), signature: failures.forged ? "0".repeat(40) : createHash("sha1").update(`public_id=${publicId}&version=1${mockCloudinaryConfiguration.apiSecret}`).digest("hex") });
   };
   return { assets, calls, failures, fakeFetch };
 }

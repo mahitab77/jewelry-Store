@@ -2125,3 +2125,205 @@ tracked entries and 23 untracked entries, nothing staged. No commit, push or dep
 No Phase 11G-A blocker remains. Browser login, catalogue/reference data/media and
 guest-cart execution still require their separate scoped approvals.
 
+## Cloudinary Dynamic Folder staging preparation — 2026-11-09
+
+Preparation only: no provider assignment/upload, credential capture, secret/IAM
+change, Cloud Run revision, hosted database operation, commit or push is authorized
+by this section. Baseline is clean master at
+91bfcf1e5c446952b92c1f0083dc677e6fc7d03e, including the verified SDK signing fix.
+The operator reports cloud `dc0mpdjrd`, key label `La Palme d'Or Staging` with
+Media Library User, and folder `la-palme/catalogue`; provider identity, Dynamic
+Folder mode, immutable folder ID and actual assignments remain unverified.
+
+The adapter adds exactly `asset_folder=mediaNamespace` to its authenticated
+multipart upload. It keeps `public_id`, overwrite/filename controls, response
+validation, delivery signing, association and cleanup unchanged. No prefix flag,
+folder migration, preset, SDK dependency or database change is needed.
+[Dynamic Folder upload parameters](https://cloudinary.com/documentation/image_upload_api_reference#upload_optional_parameters).
+
+### Folder access: prepared requests, not executed
+
+Cloudinary's lowest predefined folder role with deletion is Manager:
+`cld::role::folder::manager`. Editor lacks deletion. Retain Media Library User
+as the key's global role and inspect additive/inherited access. Manager covers
+all assets in the assigned folder, not only uploads by this key; the application's
+namespace and durable cleanup-job checks remain necessary. Do not add global
+administrative or Delivery URL Viewer roles speculatively.
+[Folder role permissions](https://cloudinary.com/documentation/dam_admin_system_roles_permissions#folder_roles).
+
+After separately approved administrative credential use, make these bounded
+read-only Admin API calls against `https://api.cloudinary.com/v1_1/dc0mpdjrd`:
+
+1. `GET /config?settings=true`: confirm the exact cloud and dynamic folder mode.
+2. `GET /folders/la-palme?max_results=500`: follow returned cursors; match exactly
+   `path=la-palme/catalogue` and retain its nonempty `external_id`. Never derive it
+   from the path, assume a numeric ID, or create a replacement folder.
+3. `GET /folder_operations/invite/<verified_external_id>`: inspect existing roles.
+
+Verify in Console Settings → API Keys that the captured dedicated key matches
+the exact label, is enabled and has Media Library User; compare it with the
+administrative key in memory and require them to differ. Do not infer identity
+from labels supplied to a local script. Treat API-key strings in role responses
+as confidential and do not print the raw responses.
+
+Only after separate mutation approval, send a JSON body constructed in memory:
+
+```text
+POST /folder_operations/invite/<verified_external_id>
+Authorization: Basic <one-time operator administrative credentials, never logged>
+Content-Type: application/json
+
+{
+  "principal": { "type": "apiKey", "id": "<verified dedicated staging API key>" },
+  "operation": "add",
+  "roles": ["cld::role::folder::manager"]
+}
+```
+
+Use the product-environment administrative/Root key only for that explicitly
+approved administrative operation and its pre/postchecks. Never alter Root,
+upload it to Google, or use it as a fallback for application failures. Re-read
+roles afterward and compare all other principals/assignments. Stop on ambiguity,
+unexpected access or uncertain outcome; do not resend blindly.
+[Folder APIs and assignment schema](https://cloudinary.com/documentation/admin_api#folder_operations).
+
+### Secure custody and Secret Manager: approval required
+
+Use a visible local masked-input dialog following the existing successful
+operator workflow. Lock the cloud name to `dc0mpdjrd`; collect the dedicated key
+and secret without chat, shell history, process arguments or ordinary files.
+Validate using the existing server configuration rules without printing values.
+Store a purpose-specific CurrentUser-DPAPI bundle in a new operator-only directory
+under the existing custody location outside Git. Bind it to cloud, key label,
+folder, Google project/service and these two secret names. Use protected ACLs
+limited to the operator and SYSTEM; do not change existing custody bundles.
+
+Before any upload, a fresh non-printing process must recover the bundle and
+validate its target and exact bytes. Retain that recoverable encrypted copy
+through failures. Administrative credentials stay separate from this runtime
+bundle and need their own explicit one-time authorization; they are never secret
+payloads. No credential is generated or captured in this preparation task.
+
+Read-only prechecks must establish that the following secret IDs are absent;
+an error other than NOT_FOUND is a blocker. Do not recreate existing resources.
+After approval, run the following MUTATING commands individually in project
+`la-palme-dor-513011`, stopping on errors:
+
+```powershell
+$Project='la-palme-dor-513011'
+$Runtime='la-palme-d-or-runtime@la-palme-dor-513011.iam.gserviceaccount.com'
+$KeySecret='la-palme-dor-staging-cloudinary-api-key'
+$ApiSecret='la-palme-dor-staging-cloudinary-api-secret'
+gcloud.cmd secrets create $KeySecret --project=$Project --replication-policy=automatic
+gcloud.cmd secrets create $ApiSecret --project=$Project --replication-policy=automatic
+```
+
+For each ID, adapt the existing redirected raw-stdin Secret Manager import
+procedure documented above: supply only its dedicated value recovered in memory
+from the new DPAPI bundle to `secrets versions add <ID> --data-file=-`. Invoke the
+bundled gcloud Python entrypoint as an argument-array/ProcessStartInfo consumer;
+credentials never enter argv, environment, console pipelines or temporary files.
+Disable SDK file logging and HTTP/body logging, capture output privately, enforce
+a bounded process deadline, and never append a BOM/newline. Record the returned
+ENABLED numeric version; do not assume version 1 or use `latest`.
+
+Read back each exact version into redirected memory and compare bytes with the
+recovered DPAPI input, without displaying either bytes or payload hashes. Clear
+temporary buffers. Then apply these MUTATING, secret-scoped bindings only:
+
+```powershell
+gcloud.cmd secrets add-iam-policy-binding $KeySecret --project=$Project --member="serviceAccount:$Runtime" --role=roles/secretmanager.secretAccessor
+gcloud.cmd secrets add-iam-policy-binding $ApiSecret --project=$Project --member="serviceAccount:$Runtime" --role=roles/secretmanager.secretAccessor
+```
+
+Read-only version metadata and per-secret IAM checks must match the recorded
+versions and runtime binding; existing db/auth secrets and project IAM remain
+unchanged. On a failed/uncertain import, inspect version metadata first and retain
+DPAPI custody; do not generate new credentials, rotate Root, add project access or
+automatically repeat imports. Recover using the same operator's protected bundle;
+DPAPI CurrentUser is not a portable off-device recovery plan. Do not erase an
+existing version to repair configuration. Cloudinary key replacement/revocation
+and any off-device custody arrangement require their own approval.
+
+### Eventual v4 service update and live acceptance: not authorized here
+
+Read-only inspection confirms healthy v3 `la-palme-dor-staging-00004-4fv` serves
+100% traffic, using `la-palme-d-or-runtime@la-palme-dor-513011.iam.gserviceaccount.com`,
+1 CPU, 1 GiB, maximum 2 instances, concurrency 4 and request timeout 60 seconds.
+Cloudinary variables/secrets are absent. Keep this revision/image for rollback.
+Existing db/auth references stay pinned to their current versions.
+
+Prefer one separately approved v4 release using its reviewed immutable image
+digest with these additive flags, rather than an intermediate configuration-only
+revision. `$ApprovedV4Image` must include the signing and Dynamic Folder fixes;
+`$KeyVersion`/`$ApiSecretVersion` are the actual verified positive numeric versions:
+
+```powershell
+gcloud.cmd run services update la-palme-dor-staging `
+  --project=la-palme-dor-513011 --region=europe-west1 `
+  --image=$ApprovedV4Image `
+  --update-env-vars="CLOUDINARY_CLOUD_NAME=dc0mpdjrd" `
+  --update-secrets="CLOUDINARY_API_KEY=la-palme-dor-staging-cloudinary-api-key:$KeyVersion,CLOUDINARY_API_SECRET=la-palme-dor-staging-cloudinary-api-secret:$ApiSecretVersion"
+```
+
+Use update flags; do not replace the full environment/service manifest. Preserve
+the runtime identity, resources/scaling, public IAM, ingress, canonical origin
+`https://la-palme-dor-staging-4dedelrv2a-ew.a.run.app`, secure cookies, noindex,
+PGOPTIONS and disabled payment/checkout-retention settings. Inspect readiness,
+digest, traffic, sanitized configuration diff and HTTP checks after deployment.
+Revert only the separately approved application revision on release failure;
+retain database schema, records, credentials and unrelated provider assets.
+
+After separate live-test authorization, use only the dedicated key to authenticate
+and inspect permitted metadata. A failed global ping/config endpoint alone does
+not prove that a folder-scoped key cannot upload. Test denied metadata access to
+an explicitly approved non-sensitive asset outside the folder; never delete it.
+Check signed-delivery isolation separately with an approved authenticated canary
+outside the folder if available. Public samples are not an isolation test, and
+folder API denial alone does not establish CDN-signature isolation. If no such
+canary is available, record that gap without creating unrelated assets.
+
+Upload one approved, clearly marked disposable photograph. Verify exact
+`asset_folder`, unchanged public ID, authenticated type, dimensions/bytes/format,
+response signature and signed original delivery. If testing via v4, sign in as
+CATALOGUE_MANAGER, associate it to an approved draft, set the primary photograph,
+publish only after existing eligibility gates pass, verify public image bytes and
+private/no-store headers, then unpublish and verify anonymous image denial while
+authorized preview works. Test ordering with a second photograph only if separately
+approved. Remove through the existing product action, then use product-scoped
+Retry provider cleanup; observe the five-minute lease for unfinished uploads and
+retryable failures. Do not run account-wide cleanup, bypass reference protection
+or promise immediate physical deletion. Verify unrelated sample assets remain
+unchanged. Return exact sanitized provider HTTP status/error on failure and stop
+without falling back to Root or broadening permissions.
+
+Local verification on 2026-11-09 passed 62 signing/upload-contract checks, 29
+existing catalogue/media integration checks on disposable PostgreSQL 18.6 and
+three HTTPS browser checks (desktop 1440px, mobile 390px; cached Playwright,
+Browser plugin unavailable). Lint, TypeScript and production build passed.
+Provider credentials, actual folder identity/role assignment and live isolation
+remain pending; local mocks do not establish those hosted properties.
+
+
+
+### Completed provider configuration — 2026-11-09
+
+Subsequent operator-approved execution completed the provider prerequisites above;
+do not repeat their creation. Cloud dc0mpdjrd uses Dynamic Folders. The dedicated
+La Palme d'Or Staging key has Manager on la-palme/catalogue, external ID
+d0dff7db3e89181daaadc0c9b94f734f2f, verified by a fresh role query with unrelated
+folder permissions preserved. Root was transient and cleared.
+
+Both la-palme-dor-staging-cloudinary-api-key:1 and
+la-palme-dor-staging-cloudinary-api-secret:1 are ENABLED, checksum verified and
+byte-matched against the preserved operator-controlled DPAPI custody. Each has
+only the approved secret-scoped runtime accessor binding. Cloud Run, existing
+database/auth secret policies and project IAM remain unchanged. Use these pinned
+versions in the combined v4 release; no provider setup replay is required.
+
+Source checkpoint validation passed lint, TypeScript, production build and 186
+distinct local regression checks on disposable PostgreSQL 18.6. The request-grant
+rehearsal used a temporary psql transport to actual loopback inside that container;
+the reviewed SQL and assertions remained unchanged. The v4 image push,
+deployment, live media acceptance and synthetic hosted records require separate
+approval; none is authorized by this completion note.

@@ -61,6 +61,7 @@ export function cloudinaryProvider(config = cloudinaryConfiguration(), fetcher: 
       const form = new FormData();
       form.set("file", new Blob([new Uint8Array(photo.bytes)], { type: photo.format === "jpg" ? "image/jpeg" : `image/${photo.format}` }), `photograph.${photo.format}`);
       form.set("public_id", publicId); form.set("overwrite", "false"); form.set("unique_filename", "false");
+      form.set("asset_folder", mediaNamespace);
       // The authenticated REST endpoint keeps original and derived assets private.
       const result = await call("authenticated", form);
       const version = String(result.version ?? "");

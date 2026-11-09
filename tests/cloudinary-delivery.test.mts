@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { cloudinaryProvider, deliveryUrl, type ProviderAsset } from "../src/lib/media/cloudinary.ts";
+import sharp from "sharp";
+import { cloudinaryProvider, deliveryUrl, preparePhoto, type ProviderAsset } from "../src/lib/media/cloudinary.ts";
 import { CatalogueAdminError } from "../src/lib/admin/catalogue/validation.ts";
 import { cloudinaryMock, mockCloudinaryConfiguration } from "./helpers/cloudinary-mock.mts";
 
@@ -72,5 +73,74 @@ for (const [name, patch] of malformed) {
     const provider = cloudinaryProvider(mockCloudinaryConfiguration, async () => { calls++; throw new Error("Unexpected network request"); });
     await assert.rejects(provider.read(stored), CatalogueAdminError);
     assert.equal(calls, 0);
+  });
+}
+
+const uploadInput = await sharp({ create: { width: 300, height: 300, channels: 3, background: "#246444" } }).png().toBuffer();
+const uploadPhoto = await preparePhoto(uploadInput, "image/png");
+for (const format of ["jpg", "png", "webp"] as const) {
+  test(`authenticated ${format} upload sets only the asset folder; public ID and SDK delivery URL stay unchanged`, async () => {
+    const input = await sharp(uploadInput).toFormat(format === "jpg" ? "jpeg" : format).toBuffer();
+    const mime = format === "jpg" ? "image/jpeg" : `image/${format}`;
+    const photo = await preparePhoto(input, mime), mock = cloudinaryMock();
+    const provider = cloudinaryProvider(mockCloudinaryConfiguration, async (url, init) => {
+      const request = new Request(url, init), form = await request.formData();
+      assert.ok(request.url.endsWith("/image/authenticated"));
+      assert.equal(request.method, "POST");
+      assert.equal(request.headers.get("authorization"), "Basic " + Buffer.from(`${mockCloudinaryConfiguration.apiKey}:${mockCloudinaryConfiguration.apiSecret}`).toString("base64"));
+      assert.deepEqual(new Set(form.keys()), new Set(["file", "public_id", "overwrite", "unique_filename", "asset_folder"]));
+      assert.equal(form.get("asset_folder"), "la-palme/catalogue");
+      assert.equal(form.get("public_id"), original.publicId);
+      const file = form.get("file"); assert.ok(file instanceof File);
+      assert.equal(file.name, `photograph.${format}`); assert.equal(file.type, mime);
+      assert.deepEqual(new Uint8Array(await file.arrayBuffer()), photo.bytes);
+      const response = await mock.fakeFetch(url, init);
+      assert.equal((await response.clone().json()).asset_folder, "la-palme/catalogue");
+      return response;
+    });
+    const uploaded = await provider.upload(original.publicId, photo);
+    assert.equal(uploaded.publicId, original.publicId);
+    assert.equal(deliveryUrl(mockCloudinaryConfiguration, uploaded), fixture.vectors.find((v) => v.publicId === original.publicId && v.format === format)!.expectedUrl);
+    assert.equal(mock.assets.size, 1);
+  });
+}
+
+const badForms: [string, (form: FormData) => void][] = [
+  ["missing folder", (form) => form.delete("asset_folder")],
+  ["empty folder", (form) => form.set("asset_folder", "")],
+  ["unrelated folder", (form) => form.set("asset_folder", "unrelated")],
+  ["product subfolder", (form) => form.set("asset_folder", original.publicId)],
+  ["duplicate folder field", (form) => form.append("asset_folder", "la-palme/catalogue")],
+  ["public ID prefix", (form) => form.set("public_id_prefix", "la-palme/catalogue")],
+  ["automatic folder prefix", (form) => form.set("use_asset_folder_as_public_id_prefix", "true")],
+  ["upload preset", (form) => form.set("upload_preset", "unreviewed")],
+];
+for (const [name, alter] of badForms) {
+  test(`provider mock rejects incorrect folder parameters: ${name}`, async () => {
+    const mock = cloudinaryMock();
+    const provider = cloudinaryProvider(mockCloudinaryConfiguration, async (url, init) => {
+      const form = await new Request(url, init).formData(); alter(form);
+      return mock.fakeFetch(url, { ...init, body: form });
+    });
+    await assert.rejects(provider.upload(original.publicId, uploadPhoto), CatalogueAdminError);
+    assert.equal(mock.assets.size, 0);
+  });
+}
+for (const publicId of ["unrelated/asset", original.publicId + "/extra", "la-palme/catalogue/" + original.publicId]) {
+  test(`invalid upload namespace is rejected before provider I/O: ${publicId}`, async () => {
+    let calls = 0;
+    const provider = cloudinaryProvider(mockCloudinaryConfiguration, async () => { calls++; throw new Error("Unexpected network request"); });
+    await assert.rejects(provider.upload(publicId, uploadPhoto), CatalogueAdminError);
+    assert.equal(calls, 0);
+  });
+}
+for (const [field, value] of Object.entries({ public_id: "unrelated/asset", type: "upload", resource_type: "video", format: "gif", width: 1, height: 1, bytes: 0, asset_id: "bad", signature: "bad" })) {
+  test(`folder-aware upload still rejects malformed provider response: ${field}`, async () => {
+    const mock = cloudinaryMock();
+    const provider = cloudinaryProvider(mockCloudinaryConfiguration, async (url, init) => {
+      const response = await mock.fakeFetch(url, init);
+      return Response.json({ ...await response.json(), [field]: value });
+    });
+    await assert.rejects(provider.upload(original.publicId, uploadPhoto), CatalogueAdminError);
   });
 }
