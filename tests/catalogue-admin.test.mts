@@ -276,6 +276,32 @@ test("forged provider responses and browser confirmations never associate a phot
   assert.equal((await catalogueHttp(request, ["products", id, "photos"], f.runtime, m.provider)).status, 415);
 });
 
+for (const [field, value] of [
+  ["type", "upload"], ["type", "private"], ["type", undefined],
+  ["resource_type", "video"], ["resource_type", "raw"], ["resource_type", undefined],
+] as const) {
+  test(`a provider response with ${field}=${value ?? "missing"} cannot create a media association`, async () => {
+    const id = await create(`Rejected ${field.replaceAll("_", "-")} ${value ?? "missing"}`), m = cloudinaryMock();
+    const provider = cloudinaryProvider(mockCloudinaryConfiguration, async (url, init) => {
+      const response = await m.fakeFetch(url, init);
+      if (!String(url).endsWith("/upload")) return response;
+      // Keep the valid signature and all other metadata; only the security claim changes.
+      return Response.json({ ...await response.json(), [field]: value });
+    });
+    await assert.rejects(uploadPhoto(owner, id, bytes, "image/png", "Rejected provider response fixture", f.runtime, provider), { status: 502 });
+    const current = await editor(id);
+    assert.equal(current.status, "DRAFT"); assert.equal(current.media.length, 0);
+    assert.equal((await f.data.query("SELECT id FROM product_media WHERE product_id=$1", [id])).rowCount, 0);
+    assert.equal((await f.data.query("SELECT state FROM catalogue_media_jobs WHERE product_id=$1", [id])).rows[0].state, "DELETE_PENDING");
+    assert.equal((await productAuditHistory(owner, id, f.runtime)).some((event) => event.action === "CATALOGUE_MEDIA_ADDED"), false);
+    assert.equal(m.assets.size, 1, "An unassociated provider upload must remain eligible for safe cleanup.");
+    assert.deepEqual(await retryPhotoCleanup(owner, id, f.runtime, provider), { completed: 0, pending: 1 }, "The upload lease must prevent premature cleanup.");
+    await f.data.query("UPDATE catalogue_media_jobs SET available_at=now()-INTERVAL '1 second' WHERE product_id=$1", [id]);
+    assert.deepEqual(await retryPhotoCleanup(owner, id, f.runtime, provider), { completed: 1, pending: 0 });
+    assert.equal(m.assets.size, 0);
+  });
+}
+
 test("removal preserves replacement and shared assets; provider deletion failure can retry", async () => {
   const a = await create("Shared photo first"), b = await create("Shared photo second"), m = mock();
   const first = await uploadPhoto(owner, a, bytes, "image/png", "Fixture shared photograph", f.runtime, m.provider);

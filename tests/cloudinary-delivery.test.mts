@@ -79,16 +79,23 @@ for (const [name, patch] of malformed) {
 const uploadInput = await sharp({ create: { width: 300, height: 300, channels: 3, background: "#246444" } }).png().toBuffer();
 const uploadPhoto = await preparePhoto(uploadInput, "image/png");
 for (const format of ["jpg", "png", "webp"] as const) {
-  test(`authenticated ${format} upload sets only the asset folder; public ID and SDK delivery URL stay unchanged`, async () => {
+  test(`authenticated ${format} upload uses the upload API and explicit delivery type; public ID and signed delivery stay unchanged`, async () => {
     const input = await sharp(uploadInput).toFormat(format === "jpg" ? "jpeg" : format).toBuffer();
     const mime = format === "jpg" ? "image/jpeg" : `image/${format}`;
     const photo = await preparePhoto(input, mime), mock = cloudinaryMock();
     const provider = cloudinaryProvider(mockCloudinaryConfiguration, async (url, init) => {
       const request = new Request(url, init), form = await request.formData();
-      assert.ok(request.url.endsWith("/image/authenticated"));
+      // Literal provider contract, independent of the adapter's endpoint builder.
+      // https://cloudinary.com/documentation/image_upload_api_reference#upload
+      // Official SDK: uploader.upload calls "upload"; build_upload_params includes type.
+      assert.equal(request.url, "https://api.cloudinary.com/v1_1/lapalme-fixture/image/upload");
       assert.equal(request.method, "POST");
       assert.equal(request.headers.get("authorization"), "Basic " + Buffer.from(`${mockCloudinaryConfiguration.apiKey}:${mockCloudinaryConfiguration.apiSecret}`).toString("base64"));
-      assert.deepEqual(new Set(form.keys()), new Set(["file", "public_id", "overwrite", "unique_filename", "asset_folder"]));
+      assert.equal(request.redirect, "error");
+      assert.ok(init?.signal instanceof AbortSignal);
+      assert.equal(init.signal.aborted, false);
+      assert.deepEqual(new Set(form.keys()), new Set(["file", "public_id", "overwrite", "unique_filename", "asset_folder", "type"]));
+      assert.equal(form.get("type"), "authenticated");
       assert.equal(form.get("asset_folder"), "la-palme/catalogue");
       assert.equal(form.get("public_id"), original.publicId);
       const file = form.get("file"); assert.ok(file instanceof File);
@@ -106,6 +113,11 @@ for (const format of ["jpg", "png", "webp"] as const) {
 }
 
 const badForms: [string, (form: FormData) => void][] = [
+  ["missing delivery type", (form) => form.delete("type")],
+  ["empty delivery type", (form) => form.set("type", "")],
+  ["public delivery type", (form) => form.set("type", "upload")],
+  ["private delivery type", (form) => form.set("type", "private")],
+  ["duplicate delivery type", (form) => form.append("type", "authenticated")],
   ["missing folder", (form) => form.delete("asset_folder")],
   ["empty folder", (form) => form.set("asset_folder", "")],
   ["unrelated folder", (form) => form.set("asset_folder", "unrelated")],
@@ -116,7 +128,7 @@ const badForms: [string, (form: FormData) => void][] = [
   ["upload preset", (form) => form.set("upload_preset", "unreviewed")],
 ];
 for (const [name, alter] of badForms) {
-  test(`provider mock rejects incorrect folder parameters: ${name}`, async () => {
+  test(`provider mock rejects unsafe upload parameters: ${name}`, async () => {
     const mock = cloudinaryMock();
     const provider = cloudinaryProvider(mockCloudinaryConfiguration, async (url, init) => {
       const form = await new Request(url, init).formData(); alter(form);
@@ -126,6 +138,14 @@ for (const [name, alter] of badForms) {
     assert.equal(mock.assets.size, 0);
   });
 }
+test("provider mock rejects the former authenticated upload endpoint without creating an asset", async () => {
+  const mock = cloudinaryMock();
+  const provider = cloudinaryProvider(mockCloudinaryConfiguration, (url, init) =>
+    mock.fakeFetch(String(url).replace(/\/image\/upload$/, "/image/authenticated"), init));
+  await assert.rejects(provider.upload(original.publicId, uploadPhoto), CatalogueAdminError);
+  assert.equal(mock.assets.size, 0);
+  assert.equal(mock.calls.length, 0);
+});
 for (const publicId of ["unrelated/asset", original.publicId + "/extra", "la-palme/catalogue/" + original.publicId]) {
   test(`invalid upload namespace is rejected before provider I/O: ${publicId}`, async () => {
     let calls = 0;

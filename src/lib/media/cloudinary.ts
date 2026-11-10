@@ -62,8 +62,9 @@ export function cloudinaryProvider(config = cloudinaryConfiguration(), fetcher: 
       form.set("file", new Blob([new Uint8Array(photo.bytes)], { type: photo.format === "jpg" ? "image/jpeg" : `image/${photo.format}` }), `photograph.${photo.format}`);
       form.set("public_id", publicId); form.set("overwrite", "false"); form.set("unique_filename", "false");
       form.set("asset_folder", mediaNamespace);
-      // The authenticated REST endpoint keeps original and derived assets private.
-      const result = await call("authenticated", form);
+      // Upload is the API action; authenticated is the delivery type.
+      form.set("type", "authenticated");
+      const result = await call("upload", form);
       const version = String(result.version ?? "");
       const expected = createHash("sha1").update(`public_id=${publicId}&version=${version}${config.apiSecret}`).digest("hex");
       const signature = typeof result.signature === "string" ? result.signature : "";

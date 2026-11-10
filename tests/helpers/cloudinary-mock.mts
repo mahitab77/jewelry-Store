@@ -20,7 +20,7 @@ export function cloudinaryMock() {
       return asset ? new Response(new Uint8Array(asset.bytes), { headers: { "Content-Type": asset.asset.format === "jpg" ? "image/jpeg" : `image/${asset.asset.format}` } }) : new Response(null, { status: 404 });
     }
     const apiPath = `/v1_1/${mockCloudinaryConfiguration.cloudName}/image/`;
-    if (url.hostname !== "api.cloudinary.com" || url.search || ![apiPath + "authenticated", apiPath + "destroy"].includes(url.pathname)) throw new Error("Only authenticated upload and deletion endpoints are permitted in this mock.");
+    if (url.hostname !== "api.cloudinary.com" || url.search || ![apiPath + "upload", apiPath + "destroy"].includes(url.pathname)) throw new Error("Only the upload and deletion API endpoints are permitted in this mock.");
     const request = new Request(url, init);
     if (request.method !== "POST") throw new Error("Provider mutations must use POST.");
     const authorization = "Basic " + Buffer.from(`${mockCloudinaryConfiguration.apiKey}:${mockCloudinaryConfiguration.apiSecret}`).toString("base64");
@@ -36,8 +36,9 @@ export function cloudinaryMock() {
       return Response.json({ result: found ? "ok" : "not found" });
     }
     const form = await request.formData(), file = form.get("file");
-    if ([...form.keys()].some((key) => !["file", "public_id", "overwrite", "unique_filename", "asset_folder"].includes(key)) ||
-      ["file", "public_id", "overwrite", "unique_filename", "asset_folder"].some((key) => form.getAll(key).length !== 1) ||
+    if ([...form.keys()].some((key) => !["file", "public_id", "overwrite", "unique_filename", "asset_folder", "type"].includes(key)) ||
+      ["file", "public_id", "overwrite", "unique_filename", "asset_folder", "type"].some((key) => form.getAll(key).length !== 1) ||
+      form.get("type") !== "authenticated" ||
       form.get("asset_folder") !== "la-palme/catalogue" ||
       !/^la-palme\/catalogue\/[0-9a-f-]{36}\/[0-9a-f-]{36}$/.test(String(form.get("public_id"))) ||
       form.get("overwrite") !== "false" || form.get("unique_filename") !== "false") throw new Error("Uploads must use the exact asset folder and preserve the server-owned identifier without overwriting assets.");
