@@ -2585,3 +2585,408 @@ Lint, TypeScript, production build and whitespace checks passed. Candidate-file
 review found no real credentials, copied local secret values, customer records,
 temporary artifacts or dependency changes. These fresh results supplement the
 earlier full implementation acceptance; they do not claim a hosted email test.
+
+### Customer accounts staging preparation — 2026-11-11
+
+**Original preparation result: PARTIAL / RELEASE HOLD; UI finding resolved by
+the source correction below.** Infrastructure/database preparation and local
+safety checks passed. At that point the approved application still advertised
+registration while disabled. A small availability-state presentation correction
+and a separately approved source checkpoint were required. Authentication was
+not reimplemented, and application source at preparation remained identical to
+approved commit
+`b2985e12765b3711c1076050f97523a5cabe804a`. No hosted mutation, real credential
+generation, image build/push, deployment, Git commit or Git push was performed.
+
+#### Verified current targets and rollback
+
+Read-only checks on 2026-11-11 verified:
+
+| Item | Observed baseline |
+| --- | --- |
+| Source | Clean `master` initially, HEAD `b2985e12765b3711c1076050f97523a5cabe804a` |
+| Google project / number | `la-palme-dor-513011` / `567666466240` |
+| Region / existing service | `europe-west1` / `la-palme-dor-staging` |
+| Healthy revision / traffic | `la-palme-dor-staging-00006-xmx`, Ready=True, 100% latest |
+| Canonical origin | `https://la-palme-dor-staging-4dedelrv2a-ew.a.run.app` |
+| Runtime service identity | `la-palme-d-or-runtime@la-palme-dor-513011.iam.gserviceaccount.com` |
+| CPU / memory / concurrency / request timeout | `1000m` / `1Gi` / `4` / `60s` |
+| Service minimum / maximum instances | `0` (default; no minimum configured) / `2` |
+| Startup CPU boost | Existing `true`; preserve it |
+| Probes | Existing startup TCP 8080, 240-second timeout/period, failure threshold 1; no liveness probe. Preserve the actual service rather than applying the older bootstrap template. |
+| PostgreSQL runtime protections | `PGOPTIONS=-c statement_timeout=8000 -c idle_in_transaction_session_timeout=10000` |
+| Neon project / branch | `green-glitter-95493455` / `br-rough-term-b9hae0t4` |
+| Direct endpoint | `ep-wispy-feather-b95dea30.c-7.eu-central-1.aws.neon.tech:5432` |
+| Database / version | `la_palme_dor_staging` / PostgreSQL `18.6` (`180006`) |
+| Ledger | Exact committed checksums for 0001–0013; 0014 absent |
+| Customer provisioning | No customer auth tables; neither proposed customer runtime role exists |
+| Rings | Five published staging products, each with an active variant and photograph; six photographs total |
+
+The registry reference configured on the current service is:
+
+    europe-west1-docker.pkg.dev/la-palme-dor-513011/la-palme-dor/la-palme-dor-staging@sha256:5462829c3ebfed81702ff7a01fef92f78a7bd19c270fb98d6824d945bf86590a
+
+Its OCI index was read and its `linux/amd64` child matches the revision's resolved
+manifest exactly:
+
+    europe-west1-docker.pkg.dev/la-palme-dor-513011/la-palme-dor/la-palme-dor-staging@sha256:8007cae37721734208d6c39468de1012bbaa09f666deff4a09bfd6f5fbfc3fbe
+
+Both digests are recorded because the index digest and executable image manifest
+are different immutable objects, not evidence of drift. The rollback target is
+the existing healthy **revision `00006-xmx`**, preserving its pinned secrets and
+image. Public GET checks for Rings, robots and administrator sign-in returned
+200 with `noindex, nofollow`; robots disallows all indexing. All five actual Ring
+names remain in the public selection. Hosted administrator authentication was
+not attempted, because sign-in would create a hosted session.
+
+#### Migration 0014 and separately controlled permission artifacts
+
+Migration 0014 remains unchanged, with normalized SHA-256:
+
+    52d69366fdcebafb552611c0c146a12f859798d8b7940db37926286b7d984c07
+
+It adds five customer-only Better Auth/counter tables, UUID keys, normalized unique
+emails, unique session tokens, session/account foreign keys and expiry indexes.
+It contains no DROP, business UPDATE, guest backfill or administrator-table
+modification. Existing profile provider/subject linkage and request ownership
+foreign keys are reused by the approved application. Guests are never claimed
+by matching contact information.
+
+New offline-generated review files:
+
+| Artifact | Exact SHA-256 |
+| --- | --- |
+| `infra/neon/staging-customer-migration.review.sql` | `eef9e0fb550b93c675bfa47d2e9e4655011b9be2ca658120fa5972feada180da` |
+| `infra/neon/staging-customer-role.review.sql` | `02c9a1163449ac91201c1e7982885d70abf3b63fc0111880975378be08351c2b` |
+| `infra/neon/staging-customer-backup.review.sql` | `66f8271d3806b1e50049823d811731ea5b35d86bbe7c8116fb81ffb6026ed1b9` |
+
+`scripts/prepare-customer-staging.mts` generates these documents entirely offline
+from the hash-checked committed migration/permission contract. It cannot connect
+to a database/cloud, generate credentials or deploy. Tests compare the generated
+SQL byte-for-byte with the review files. The existing review-only customer grant
+artifact is preserved, including its ROLLBACK; it is not silently applied.
+
+Every new operator script requires PostgreSQL 18.6, the exact Neon project,
+branch, database and `neondb_owner` session, verified TLS/channel binding, the
+exact ledger/checksums and transaction advisory locks. The client must use the
+direct hostname; routing overrides are refused. Hosted execution additionally
+requires a separately approved operation-specific environment marker. Local
+rehearsal can only target a random `lapalme_test_admin_<32 hex>` database as
+postgres with actual loopback server addressing. Never use that flag on Neon.
+
+The migration script embeds the **exact unchanged 0014 body** inside a single
+guarded transaction and fills its checksum before COMMIT, matching the local
+migration runner's ledger behavior. Do not invoke the raw migration with psql
+and leave a NULL ledger checksum, and do not use the fresh/empty-database staging
+preparer against this existing database. Replay after 0014 is refused.
+
+The proposed login is **`lapalme_staging_customer`**, separate from the existing
+application/admin and backup identities. Creation refuses an existing role;
+credentials are never overwritten. It has NOSUPERUSER, NOCREATEDB, NOCREATEROLE,
+NOINHERIT, NOREPLICATION, NOBYPASSRLS, no memberships/ownership, public-schema USAGE
+and CONNECT only. Role defaults retain 8-second statement, 10-second idle-in-
+transaction and 5-second lock timeouts. Grants derive from the approved contract:
+customer auth/session CRUD; profiles with restricted INSERT/UPDATE columns;
+explicit request SELECT/INSERT columns; required design/location reads; counters
+and audit INSERT. `products.updated_at` / `product_variants.updated_at` UPDATE
+privileges only support existing SELECT FOR SHARE snapshot locks. No catalogue
+business field is updated by customer application code.
+
+Other customers' records are excluded by fresh verified application authorization
+and owner predicates, not by RLS or individual database users. SQL privileges do
+not themselves isolate rows between customers sharing this server-side identity.
+Administrator identities/permissions, assignments/internal fields, orders,
+payments, inventory modifications, request updates/deletes, schema/ledger access
+and migration-owner privileges are excluded. The complete independent table and
+column privilege matrix and actual denied SQL were exercised locally, followed
+by real local OTP/owned-request/cross-account checks using the prepared role.
+
+The existing **`lapalme_staging_backup`** can read all 38 current tables, but new
+auth tables do not automatically inherit that grant. Full pg_dump would fail
+after 0014 without the additional reads, even while the new tables are empty.
+The backup proposal adds only SELECT on those five explicit tables; it changes
+no role, password, default privileges or existing grants and grants no writes.
+Approve it with the migration and execute in the same controlled window before
+resuming backups. If backup access is not approved, hold the hosted migration.
+Backups include sensitive session/auth data and must retain the existing
+authenticated-encryption, protected key custody and retention requirements.
+No hosted backup was run and no new backup infrastructure was introduced.
+
+#### Operator migration/credential procedure — not executed
+
+1. Obtain approval for the exact target, each SQL artifact/hash, backup change,
+   new role name and credential custody. Recheck current revision, ledger,
+   version, five Rings records and credential absence. Stop on drift. Schedule
+   migration/backup grants together and retain a separately approved recoverable
+   backup using PostgreSQL 18 tools; do not reset a branch or schema.
+2. Use an approved PostgreSQL 18 `psql -X` launcher. Clear inherited PG routing,
+   service, startup, credential-file and options overrides. Set only the exact
+   host/port/database/operator above, `PGSSLMODE=verify-full`, trusted certificate
+   roots and `PGCHANNELBINDING=require`. Recover the existing operator credential
+   through its protected non-printing input channel; never use a URL/password in
+   argv, shell history, this document or web-runtime configuration.
+3. After explicit migration approval, set the non-secret marker
+   `CUSTOMER_STAGING_TARGET_APPROVED` to
+   `green-glitter-95493455/br-rough-term-b9hae0t4/ep-wispy-feather-b95dea30/la_palme_dor_staging/migration-0014`
+   and run `psql -X --no-password --set=ON_ERROR_STOP=1 --file=infra/neon/staging-customer-migration.review.sql`.
+   Leave `local_rehearsal` unset. Confirm COMMIT, all fourteen checksum rows and
+   unchanged business data. A failed connection at COMMIT has an uncertain
+   outcome: inspect read-only and never replay blindly.
+4. With separate backup approval, change only the marker suffix to `backup-grants`
+   and execute `infra/neon/staging-customer-backup.review.sql` through the same
+   launcher. Verify SELECT on all five new tables and retained write/DDL denials.
+5. **No real credential was generated during preparation.** After target and
+   custody approval, generate a fresh 32-byte random database password and a
+   separate 32-byte random signing secret using the platform CSPRNG; encode each
+   as base64url. Do not derive/reuse administrator, app, backup or Cloudinary
+   material. Encrypt purpose/target-bound bundles using Windows DPAPI CurrentUser
+   in a new approved directory outside Git, with inheritance disabled and ACL
+   access only for the custodian and SYSTEM. Preserve all existing bundles.
+   Verify private round-trip and fresh-process recovery before provisioning;
+   approve an independent encrypted recovery method for profile/device loss.
+6. After role approval, recover only the new database password into protected
+   `CUSTOMER_STAGING_DATABASE_PASSWORD`, set marker suffix `customer-role`, and
+   execute `infra/neon/staging-customer-role.review.sql`. It creates exactly one
+   restricted role and never rotates an existing credential. Reconnect as that
+   login with verified TLS to inspect identity, timeouts and effective privileges.
+   Use rollback-only negative probes, never hosted business fixtures or signups.
+7. Construct the customer-runtime URL only in memory from the approved direct
+   target and that restricted login. The migration-owner credential must never
+   enter it. Clear credential-bearing process variables/references afterward.
+   Unexpected role/grant outcomes require a new approval; no automatic DROP ROLE,
+   DROP OWNED, schema rollback or credential rotation is permitted.
+
+#### Secret Manager and exact disabled-release configuration
+
+**A disabled-only release requires no new customer secret or IAM binding.** The
+customer configuration returns before creating a pool or mailer when its flag is
+false. Preparing the later active configuration does not require provisioning it
+now. Migration 0014 is also not accessed while that runtime is disabled, so its
+coordinated migration/role/backup proposals may remain unapplied for a browse-only
+disabled release. All are prerequisites before any later customer activation.
+Preserve these currently ENABLED numeric references and their existing
+secret-scoped `roles/secretmanager.secretAccessor` runtime bindings:
+
+| Environment setting | Existing exact reference/value to preserve |
+| --- | --- |
+| `DATABASE_URL`, `ADMIN_DATABASE_URL`, `CART_DATABASE_URL` | `la-palme-dor-staging-db:1` |
+| `BETTER_AUTH_SECRET` | `la-palme-dor-staging-auth:1` |
+| `CLOUDINARY_API_KEY` | `la-palme-dor-staging-cloudinary-api-key:1` |
+| `CLOUDINARY_API_SECRET` | `la-palme-dor-staging-cloudinary-api-secret:1` |
+| `CLOUDINARY_CLOUD_NAME` | `dc0mpdjrd` |
+| `BETTER_AUTH_URL`, `CART_ORIGIN` | Exact canonical origin above |
+| `PGOPTIONS` | Exact 8s/10s value above |
+| `CUSTOMER_AUTH_ENABLED` | Add explicit `false` |
+| `CUSTOMER_EMAIL_APPROVED` | Add explicit `false` |
+| `CUSTOMER_DATABASE_URL`, `CUSTOMER_AUTH_SECRET`, `CUSTOMER_EMAIL_API_KEY`, `CUSTOMER_EMAIL_FROM` | Remain absent/unmounted in the disabled-only release |
+| Payments / direct sales | Preserve absent payment URL/credentials and disabled readiness defaults; absent `COMMERCE_MODE` defaults to `QUOTATION_ONLY` |
+| Indexing | Build with canonical `SITE_URL` and `SITE_INDEXING_ALLOWED=false`; preserve noindex |
+
+For a separately approved future activation, proposed new secret IDs are
+`la-palme-dor-staging-customer-db` for `CUSTOMER_DATABASE_URL` and
+`la-palme-dor-staging-customer-auth` for `CUSTOMER_AUTH_SECRET`. The signing secret
+must differ from `BETTER_AUTH_SECRET`. After a provider/domain is approved,
+`CUSTOMER_EMAIL_API_KEY` may use `la-palme-dor-staging-customer-email-api-key`;
+`CUSTOMER_EMAIL_FROM` is a verified bare sender address and can be non-secret
+server configuration. Both email settings are deferred while no domain exists.
+The current adapter targets Resend's HTTPS API, not SMTP.
+
+Secret creation/version-add, raw UTF-8 stdin upload without BOM/newline, protected
+read-back verification and IAM changes all require separate approval. Upload only
+the individual runtime value, never a custody bundle. Record the actual returned
+positive numeric version and mount that exact number; do not assume `1` or use
+`latest`. Grant the existing runtime service account accessor only on each
+approved new secret, never at project scope. No service-account key, project-wide
+accessor grant, change to an existing secret/version or existing IAM binding is
+needed. [Cloud Run secret configuration](https://docs.cloud.google.com/run/docs/configuring/services/secrets).
+
+#### Immutable image and minimal future deployment — not executed
+
+No candidate Docker image was built or pushed during this task. After source and
+release approval, use a clean detached checkout of the approved release commit.
+The preparation baseline is `b2985e1`; use the resulting approved UI-correction
+checkpoint as the release pin after its normal source push is verified. Never label a
+modified tree as the original checkpoint or silently rebuild a previously
+accepted image under another digest.
+
+Use the existing Dockerfile/repository and its `.dockerignore`, with
+`docker buildx build --platform linux/amd64`, build arguments
+`SITE_URL=https://la-palme-dor-staging-4dedelrv2a-ew.a.run.app` and
+`SITE_INDEXING_ALLOWED=false`, and a source-revision label for the exact approved
+commit. Build once, inspect the image OS/architecture/source label, then push the
+reviewed tag only after image-push approval. Read the resulting registry manifest;
+record and verify its immutable digest and `linux/amd64` platform before deploy.
+No secret, local node_modules or test/preparation script belongs in the image.
+
+The minimal service mutation, held for separate approval, is the new immutable
+image plus the two explicit false flags. The following PowerShell block is a
+**proposal, not executed**; `$VerifiedImage` must come from approved verification:
+
+~~~powershell
+if ($VerifiedImage -notmatch '^europe-west1-docker\.pkg\.dev/la-palme-dor-513011/la-palme-dor/la-palme-dor-staging@sha256:[0-9a-f]{64}$') { throw 'Verified immutable image required' }
+gcloud.cmd run services update la-palme-dor-staging `
+  --project=la-palme-dor-513011 --region=europe-west1 `
+  --image=$VerifiedImage `
+  --update-env-vars=CUSTOMER_AUTH_ENABLED=false,CUSTOMER_EMAIL_APPROVED=false
+~~~
+
+Use `--update-env-vars`, not replacement/clearing flags, to preserve existing
+variables and numeric secret references. Do not replace the service with the
+bootstrap template: its startup/probe defaults differ from the live service.
+Do not change runtime identity, IAM/ingress, CPU/memory/concurrency/scaling,
+timeouts, current probes/startup boost, canonical origin or provider configuration.
+The existing latest-revision traffic policy makes this a controlled release-window
+operation. Inspect readiness, traffic, resolved digest and sanitized configuration
+diff immediately, then public Rings/media, unavailable account/request surfaces,
+anonymous denials, noindex and existing admin operations under approved acceptance.
+[Non-destructive env updates](https://docs.cloud.google.com/run/docs/configuring/services/environment-variables),
+[immutable image deployment](https://docs.cloud.google.com/run/docs/deploying).
+
+If the approved release fails, the separately authorized traffic-only rollback is:
+
+    gcloud.cmd run services update-traffic la-palme-dor-staging --project=la-palme-dor-513011 --region=europe-west1 --to-revisions=la-palme-dor-staging-00006-xmx=100
+
+Retain existing images/secret versions. Rollback does not undo migration 0014,
+delete requests/products or reset credentials. It is release-failure recovery,
+not a workaround for the new authentication requirement or an invitation to add
+guest submission fallback.
+
+#### Disabled experience, blocker and verification evidence
+
+With both flags false, browsing remains public. Customer sign-in/registration
+cannot succeed, account APIs return private/no-store generic 503 responses,
+session availability returns `{customer:null,available:false}`, and anonymous
+quotation, modification, bespoke, Zoom and boutique submissions cannot be made.
+No existing customer session can bypass the disabled runtime. No mailer/pool is
+created by it. These request journeys are **unavailable**, not working features
+of this disabled release. The prior revision's guest behavior is not restored.
+
+**Original release blocker (resolved by the correction below):**
+`CustomerSessionProvider` discarded the existing session
+endpoint's `available:false` state. `CustomerAuthForm` still offers “Send sign-in
+code” and “Create an account,” while request gates tell visitors to sign in or
+register. The server refuses them safely, but the presentation claims unavailable
+capabilities. The smallest proposed correction is to propagate availability into
+the client context and render a clear unavailable notice on sign-in and gated
+request pages, with public browsing links and no registration/code controls when
+unavailable. Keep all server authorization and both false flags unchanged. This
+is a presentation correction, not new authentication, guest access or a redesign.
+During preparation it was reported and **not applied**. The subsequent narrow UI
+correction and source checkpoint were explicitly authorized and are recorded below.
+
+Focused verification used disposable PostgreSQL 18.6 and the existing local HTTPS
+Playwright production-server harness (Browser plugin unavailable):
+
+- **72/72** focused tests passed: seven new offline artifact/migration/permission
+  checks, customer OTP/isolation/history, request authorization/uncertainty and
+  administrator tests. Seven preparation checks were rerun successfully after
+  tightening routing-override refusal. No existing test was weakened or edited.
+- Exact 0013→0014 rehearsal preserved every old business-table row, all thirteen
+  ledger entries/checksums, historical guest ownership and five photographed
+  local sample Rings records. Wrong endpoint, absent approval, changed checksum,
+  lock contention, routing override and replay are refused without partial DDL.
+- The complete customer table/column privilege matrix, actual denied SQL, OTP
+  operation under the prepared login, cross-account request denial and separate
+  SELECT-only backup delta passed.
+- Disabled browser checks: **2 passed, 1 failed**. Public navigation/photographs,
+  anonymous denial, no framework/runtime exception and independent admin login
+  passed. The unavailability-presentation acceptance test fails on the real
+  code-sending control; it is retained to expose the blocker rather than weakened.
+- Lint, TypeScript and production build passed. An initial preparation-test-only
+  typing error was fixed; application source never changed. There was no Docker
+  image build/push or hosted test account/email.
+
+The small UI correction and source checkpoint are now authorized. Hosted actions
+still require separate approval: the exact migration and coordinated backup delta; role/custody and credential
+generation; any new secret versions and narrowly scoped IAM; approved immutable
+image build/push and Cloud Run release/rollback; later domain/provider setup,
+controlled live email acceptance and customer activation. A disabled-only image
+does not need customer credential provisioning, but it still needs the UI fix.
+All prepared files remain local and uncommitted at the approved HEAD. Existing
+Rings, request records, schema/roles, credentials, secret versions, IAM and Cloud
+Run were only read, never modified.
+
+At the end of the original preparation: one modified documentation file and six new local
+review/generator/test files, nothing staged; `master`/HEAD remain at `b2985e1`.
+The task-owned PostgreSQL container/volume, disposable databases/roles, temporary
+TLS files, transports and logs were removed, with test listeners closed. Docker
+Desktop returned to its original stopped state. Pre-existing files/custody,
+unrelated containers/volumes and cached images were preserved.
+
+### Disabled customer registration UI correction and source checkpoint — 2026-11-11
+
+**PASS for local correction and verification.** The previously reported disabled
+registration presentation blocker is resolved. This source checkpoint contains
+the narrowly authorized UI correction and the preserved non-secret staging
+preparation artifacts; it does not authorize or perform a hosted release.
+
+The existing private/no-store session endpoint now explicitly returns an
+`available` boolean for both configured anonymous and authenticated responses,
+as well as its existing false state when disabled/unavailable. This is derived
+from server runtime configuration, including email readiness. Client components
+consume that one state; no public credential, new environment variable,
+build-time-only gate, dependency or authentication system was introduced.
+
+The shared unavailable view replaces sign-in/registration controls on the direct
+`/account/sign-in` route, My Account and gated request entry points. It displays:
+
+> Private account access is being prepared. You are welcome to explore our
+> collections in the meantime.
+
+It also says private requests/appointments are not yet available and provides a
+working collections link. Public headers use the neutral Account entry when
+access is unavailable. Product pages show a small contextual notice beside the
+existing actions; there is no global warning banner. Product/action links retain
+their intent, product, variant and consultation context. The gate displays the
+selected piece and complete configuration label without exposing a request form.
+No quotation or appointment is claimed as submitted and no guest fallback exists.
+
+When the server reports availability, the existing registration, returning-customer
+email-code login, return-to-selected-request, verified contact prefilling, My
+Account and owner checks remain active. Authentication-form memory survives the
+fresh availability check when returning from an inbox/tab; codes still clear on
+pagehide. Customer expiry, revocation, account switching, stale-response rejection
+and administrator isolation retain their existing protections.
+
+Verification used the same production build for disabled and enabled runtime
+fixtures, with disposable PostgreSQL 18.6 and an in-memory email provider:
+
+- **88/88 focused backend checks passed**, including server-derived availability,
+  anonymous denial, OTP/login, customer/admin isolation, request ownership and
+  recovery, prepared migration/role/backup artifacts, Rings assets and payment
+  blocking. Existing migration and preparation SQL hashes remained unchanged.
+- **31/31 distinct browser cases passed** across the full run and targeted reruns:
+  five disabled-mode cases, nine enabled customer cases, ten request-experience
+  cases and seven existing Rings cases. Disabled checks cover direct account
+  routes, all request actions, public photographs, five local Ring records,
+  selected alternate configuration and zero unintended submission/code requests.
+  Enabled checks cover first registration, returning login without a name,
+  original ring/variant return, private history, expiry, background restoration,
+  switching and stale responses. One new fixture startup/selector issue was
+  corrected; acceptance assertions were retained.
+- Both modes were checked at **320, 375, 768, 1024 and 1440px**; existing larger
+  wordmark checks also passed. No overflow, framework overlay or relevant page
+  runtime error was observed. Browser plugin was unavailable, so cached Playwright
+  exercised the real local HTTPS Next server. Disabled-view desktop/mobile
+  captures were inspected for the existing black/gold/ivory presentation.
+- Lint, TypeScript, production build and whitespace checks passed. No application
+  source changed after that build; later fixture corrections were type/lint checked.
+
+The three guarded SQL proposals, offline generator and permission/migration test
+from staging preparation are included unchanged. Its disabled browser acceptance
+test now passes and has stronger context/responsive coverage. The preparation
+target and rollback snapshots remain historical read-only observations; this
+task made no unrelated provider/infrastructure audit or hosted change.
+
+Existing Rings data and photographs were not modified. No hosted migration,
+role change, real credential generation/upload, Google secret, IAM change,
+Docker image push, Cloud Run deployment, activation, payment enablement or live
+email occurred. Defaults remain `CUSTOMER_AUTH_ENABLED=false` and
+`CUSTOMER_EMAIL_APPROVED=false`. The current staging revision remains the
+previously recorded `la-palme-dor-staging-00006-xmx` because no deployment occurred.
+
+Only this tested source checkpoint and normal `origin/master` push are authorized.
+The separately reviewed immutable-image release, migration/backup/role/custody,
+secret/IAM and eventual verified-domain/email activation prerequisites above
+remain pending their own approvals. Use the resulting correction commit as the
+candidate source pin; `b2985e1` is the preserved parent implementation baseline.

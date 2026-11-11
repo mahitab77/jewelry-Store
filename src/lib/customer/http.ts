@@ -23,8 +23,8 @@ export async function customerAuthHttp(request: Request, supplied?: CustomerRunt
     if (path === "/session") {
       try {
         const c = await requireCustomer(request.headers, runtime);
-        return customerJson({ customer: { id: c.id, expiresAt: c.expiresAt, name: c.name, email: c.email, phone: c.phone } });
-      } catch (error) { if (error instanceof CustomerError && error.status === 401) return customerJson({ customer: null }); throw error; }
+        return customerJson({ available: true, customer: { id: c.id, expiresAt: c.expiresAt, name: c.name, email: c.email, phone: c.phone } });
+      } catch (error) { if (error instanceof CustomerError && error.status === 401) return customerJson({ customer: null, available: true }); throw error; }
     }
     customerOrigin(request, runtime);
     const limit = databaseThrottle(runtime.pool, runtime.config.secret, "customer_auth_rate_limits");

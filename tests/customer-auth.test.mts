@@ -19,6 +19,13 @@ beforeEach(async () => { await f.data.query("DELETE FROM customer_auth_rate_limi
 after(async () => { if (f) await f.close(); });
 const input = (extra = {}) => ({ submissionId: randomUUID(), kind: "QUOTATION", productId: developmentId(101), variantId: developmentId(201), name: "Local customer request", message: "A private local request fixture.", ...extra });
 const account = (path = "", headers = f.customerHeaders, method = "GET", body?: unknown) => customerAccountHttp(new Request(f.customerConfig.baseURL + "/api/account" + path, { method, headers: { ...Object.fromEntries(headers), Origin: f.customerConfig.baseURL, "Content-Type":"application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) }), path.split("?")[0].split("/").filter(Boolean), f.customerRuntime);
+
+test("session availability is server-derived and separate from customer authorization", async()=>{
+ const session=(headers=new Headers())=>new Request(f.customerConfig.baseURL+'/api/customer-auth/session',{headers});
+ const anonymous=await customerAuthHttp(session(),f.customerRuntime);assert.deepEqual(await anonymous.json(),{customer:null,available:true});assert.match(anonymous.headers.get('cache-control')!,/no-store/);
+ const verified=await(await customerAuthHttp(session(f.customerHeaders),f.customerRuntime)).json();assert.equal(verified.available,true);assert.equal(verified.customer.email,f.customerEmail);assert.ok(!('token' in verified.customer));
+ const disabled=await customerAuthHttp(session());assert.deepEqual(await disabled.json(),{customer:null,available:false});
+});
 test("public activation and live delivery fail closed without independent secret and approved sender", async () => {
   assert.throws(() => customerConfiguration({ NODE_ENV: "test" })); assert.throws(() => customerMailer({ NODE_ENV: "test" }));
   const response = await customerAuthHttp(new Request("https://local.test/api/customer-auth/send-code", { method:"POST" })); assert.equal(response.status,503);

@@ -3,14 +3,16 @@ import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { customerReturn } from "../../lib/customer/intent";
-import { useCustomer } from "./CustomerSessionProvider";
+import { CustomerUnavailable, useCustomer } from "./CustomerSessionProvider";
 import styles from "../requests/request.module.css";
 export function CustomerAuthForm({ destination }: { destination: string }) {
   const router = useRouter(), session = useCustomer();
   const [registration, setRegistration] = useState(false), [name, setName] = useState(""), [email, setEmail] = useState(""), [code, setCode] = useState(""), [sent, setSent] = useState(false), [pending, setPending] = useState(false), [error, setError] = useState(""), [cooldown, setCooldown] = useState(0);
   useEffect(() => { const clear = () => setCode(""); window.addEventListener("pagehide",clear); return () => window.removeEventListener("pagehide",clear); }, []);
+  if (session.checking) return <section className={styles.root}><p role="status">Checking your private account access…</p></section>;
+  if (!session.available) return <CustomerUnavailable />;
   async function submit(event: FormEvent) {
-    event.preventDefault(); if (pending) return; setPending(true); setError("");
+    event.preventDefault(); if (pending || session.checking || !session.available) return; setPending(true); setError("");
     try {
       const response = await fetch(`/api/customer-auth/${sent ? "verify-code" : "send-code"}`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(sent ? { email, code, ...(registration ? { name } : {}) } : { email }), signal: AbortSignal.timeout(20000) });

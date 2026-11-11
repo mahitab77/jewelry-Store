@@ -6,9 +6,11 @@ import type { PublicProductDetail } from "../../lib/catalogue/types.ts";
 import { formatEgp, variantOptionLabels } from "../../lib/catalogue/presentation.ts";
 import styles from "./catalogue.module.css";
 import { AddToCart } from "../cart/AddToCart";
+import { useCustomer } from "../customer/CustomerSessionProvider";
 
 type Props = Pick<PublicProductDetail, "id" | "slug" | "variants" | "productType" | "salesMode" | "canEnquire">;
 export function JewelryOptions({ slug, variants, productType, salesMode, canEnquire }: Props) {
+  const { available, checking } = useCustomer();
   const [selectedId, setSelectedId] = useState(() => (variants.find((v) => v.canPurchase) ?? variants[0])?.id);
   const selected = variants.find((v) => v.id === selectedId);
   const labels = variantOptionLabels(variants);
@@ -29,6 +31,7 @@ export function JewelryOptions({ slug, variants, productType, salesMode, canEnqu
     <p className={styles.stock} aria-live="polite">{availability}</p>
     <p className={styles.supporting}>{selected?.canPurchase
       ? "Add your chosen configuration to the shopping bag. Your bag does not reserve the piece."
+      : !checking && !available ? "Private requests and appointments are not yet available. You are welcome to explore this piece and its configurations."
       : enquiryOnly ? "A private conversation is the first step. Speak with us about the piece, its details, and your preferences."
         : "Our boutique can share further details. Availability is confirmed personally."}</p>
     {selected?.canPurchase && !enquiryOnly ? <AddToCart key={selected.id} variantId={selected.id} /> : null}

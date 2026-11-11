@@ -38,6 +38,18 @@ test("new customer resumes the exact ring and variant, submits a quotation and v
   await page.getByRole('button',{name:'Personal Details',exact:true}).click();assert.equal(await page.getByLabel('Name',{exact:true}).inputValue(),'Updated Browser Customer');
  }finally{await context.close();}
 });
+test("returning email-code login stays available after restoring the tab without requiring a name",{timeout:60000},async()=>{
+ const {browser,fixture}=h.current(),context=await browser.newContext({ignoreHTTPSErrors:true}),page=await context.newPage();
+ try{
+  const availability=await context.request.get(origin+'/api/customer-auth/session');assert.deepEqual(await availability.json(),{customer:null,available:true});
+  await page.goto(origin+'/account/sign-in');await page.getByLabel('Email address',{exact:true}).fill(fixture.customerEmail);assert.equal(await page.getByLabel('Your name',{exact:true}).count(),0);
+  await page.getByRole('button',{name:'Send sign-in code',exact:true}).click();await page.getByLabel('Verification code',{exact:true}).waitFor();
+  await page.evaluate(()=>window.dispatchEvent(new Event('pagehide')));await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));await page.getByLabel('Verification code',{exact:true}).waitFor();assert.equal(await page.getByLabel('Email address',{exact:true}).inputValue(),fixture.customerEmail);
+  const mail=h.customerEmails.filter(m=>m.email===fixture.customerEmail).at(-1);assert.ok(mail);await page.getByLabel('Verification code',{exact:true}).fill(mail.otp).catch(()=>{throw Error('Local verification entry failed; private value withheld.');});
+  await page.getByRole('button',{name:'Verify and continue',exact:true}).click();await page.waitForURL(origin+'/account');await page.getByRole('heading',{name:'My Account',exact:true}).waitFor();
+ }finally{await context.close();}
+});
+
 test("responsive public navigation, protected forms and customer account fit every required viewport",{timeout:150000},async()=>{
  const {browser,fixture}=h.current();
  for(const width of [320,375,768,1024,1440,1536,1920]){
