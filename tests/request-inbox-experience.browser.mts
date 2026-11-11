@@ -17,10 +17,10 @@ const searchPath = "/api/admin/requests/search";
 const token = () => randomUUID().slice(0,8);
 async function context(): Promise<Context> {
   const c = await browser.newContext({ ignoreHTTPSErrors: true, reducedMotion: "reduce", viewport: { width:1440,height:1000 }, timezoneId:"America/Los_Angeles" });
-  c.setDefaultTimeout(15000); c.setDefaultNavigationTimeout(15000); return c;
+  await h.customerContext(c); c.setDefaultTimeout(15000); c.setDefaultNavigationTimeout(15000); return c;
 }
 async function createRequest(c: Context, kind: RequestKind, extra: Partial<PublicRequestInput> = {}) {
-  const unique = token(), input: PublicRequestInput = { submissionId:randomUUID(),kind,name:`LOCAL UX CUSTOMER ${unique}`,email:`inbox-ux-${unique}@boutique.test`,message:`LOCAL UX PRIVATE MESSAGE ${unique}`,...extra };
+  const unique = token(), input: PublicRequestInput = { submissionId:randomUUID(),kind,name:`LOCAL UX CUSTOMER ${unique}`,message:`LOCAL UX PRIVATE MESSAGE ${unique}`,...extra,email:fixture.customerEmail! };
   const response = await c.request.post(origin + "/api/requests",{headers:{Origin:origin},data:input}); assert.equal(response.status(),200); return input;
 }
 async function enterInbox(page: Page) {

@@ -51,7 +51,7 @@ test("migration preserves legacy identities and audit records; all applied check
   });
   assert.equal((await fixture.data.query("SELECT id FROM admin_users WHERE id=$1", [legacyId])).rowCount, 1);
   const ledger = (await fixture.data.query("SELECT checksum_sha256 FROM schema_migrations")).rows;
-  assert.equal(ledger.length, 13); assert.ok(ledger.every((row) => /^[a-f0-9]{64}$/.test(row.checksum_sha256)));
+  assert.equal(ledger.length, 14); assert.ok(ledger.every((row) => /^[a-f0-9]{64}$/.test(row.checksum_sha256)));
 });
 
 test("enabled admin login creates a fresh eight-hour database session and secure library cookie", async () => {

@@ -989,3 +989,41 @@ configuration and upload/delivery verification also require separate approval.
 Do not weaken publication requirements to bypass that provider prerequisite.
 No hosted schema migration, seed, grant, provider upload, deployment, commit or push
 is performed by this local audit.
+
+### Customer authentication — migration 0014 (local only, 2026-11-11)
+
+`0014_customer_authentication.sql` adds separate `customer_auth_users`,
+`customer_auth_sessions`, `customer_auth_accounts`, `customer_auth_verifications`
+and `customer_auth_rate_limits` tables. UUID identities, normalized unique emails,
+verified-email state, session/account foreign keys, unique session tokens and
+expiry indexes support the installed Better Auth 1.7.14 OTP plugin. Password and
+OAuth endpoints, linking, email changes and deletion are disabled. The core
+account table supports the library's identity revocation path.
+
+The existing profile provider/subject constraint links each verified user to one
+profile with provider `better-auth-customer` and the authentication UUID as its
+immutable subject. Creation never matches historical email or telephone; guest
+requests stay unclaimed. Request insertion derives `customer_profile_id` from
+fresh authorization and rechecks/locks the session inside the existing UUID
+transaction. Receipt recovery checks the owner. Original-design snapshots and
+the existing request tables remain the source of truth.
+
+[customer-runtime-grants.review.sql](../infra/neon/customer-runtime-grants.review.sql)
+proposes a separate restricted runtime login with customer auth operations,
+profile creation/basic updates, explicit customer-visible request columns,
+request insertion, required public design reads, counters and append-only audits.
+It excludes administrator data, request updates/deletes, inventory/payment writes
+and schema administration. PostgreSQL requires an UPDATE privilege for existing
+snapshot `SELECT FOR SHARE` locks; only `products.updated_at` and
+`product_variants.updated_at` are proposed. Application code does not update
+these columns. The artifact ends with `ROLLBACK`; hosted execution is not
+authorized. No existing grants or migrations 0001–0013 changed.
+
+The fourteen-migration checksum manifest includes 0014. Disposable PostgreSQL
+18.6 tests cover preserved guest records, replay, ownership, permission denials
+and current-schema encrypted backup/restore. Historical backup-role permissions
+cover their accepted schema through 0013 and do not gain customer-credential
+access. Before activation, separately review backup access to these five tables.
+The historical encrypted-backup regression remains tested at schema 0013; full
+schema-0014 restore is tested with the disposable operator identity. See the
+customer acceptance entry in [production-readiness.md](production-readiness.md).

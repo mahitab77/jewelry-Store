@@ -8,8 +8,8 @@ import { requestFixture } from "./helpers/request-fixture.mts";
 import { catalogueFixture } from "./helpers/catalogue-fixture.mts";
 import { developmentId } from "../db/tools/seed.ts";
 import { runMigrations } from "../db/tools/migrate.ts";
-import { submitRequest } from "../src/lib/requests/repository.ts";
-import { requestsHttp } from "../src/lib/requests/http.ts";
+import { submitRequest as submitOwnedRequest } from "../src/lib/requests/repository.ts";
+import { requestsHttp as ownedRequestsHttp } from "../src/lib/requests/http.ts";
 import { parseRequest, RequestError } from "../src/lib/requests/validation.ts";
 import { cairoFields, cairoInstant } from "../src/lib/requests/cairo.ts";
 import { listRequests, readRequest, changeRequest } from "../src/lib/admin/requests/repository.ts";
@@ -23,8 +23,11 @@ const oldMode = process.env.COMMERCE_MODE;
 before(async () => { delete process.env.COMMERCE_MODE; f = await requestFixture(); owner = await f.headers("OWNER"); manager = await f.headers("CATALOGUE_MANAGER"); }, { timeout: 60000 });
 beforeEach(async () => { await f.data.query("DELETE FROM admin_auth_rate_limits"); await f.data.query("DELETE FROM cart_rate_limits"); });
 after(async () => { if (f) await f.close(); if (oldMode === undefined) delete process.env.COMMERCE_MODE; else process.env.COMMERCE_MODE = oldMode; });
+// Existing request-domain regressions now execute as the verified fixture customer.
+const submitRequest = (value: unknown, _runtime?: unknown) => { void _runtime; return submitOwnedRequest(value, f.customerRuntime, f.customerHeaders); };
+const requestsHttp = (request: Request, _runtime?: unknown) => { void _runtime; const headers = new Headers(request.headers); headers.set('Cookie', f.customerHeaders.get('Cookie')!); return ownedRequestsHttp(new Request(request, { headers }), f.customerRuntime); };
 function input(extra: Partial<PublicRequestInput> = {}): PublicRequestInput {
-  const id = randomUUID(); return { submissionId: id, kind: "QUOTATION", productId: developmentId(101), variantId: developmentId(201), name: "Local request fixture", email: `local-${id}@boutique.test`, message: "Clearly labelled local request fixture only.", ...extra };
+  const id = randomUUID(); return { submissionId: id, kind: "QUOTATION", productId: developmentId(101), variantId: developmentId(201), name: "Local request fixture", email: f.customerEmail, message: "Clearly labelled local request fixture only.", ...extra };
 }
 function request(value: unknown, extra: Record<string, string> = {}, method = "POST") {
   return new Request(f.authConfig.baseURL + "/api/requests", { method, headers: { Origin: f.authConfig.baseURL, "Content-Type": "application/json", ...extra }, ...(method === "GET" ? {} : { body: JSON.stringify(value) }) });
@@ -40,7 +43,7 @@ test("Cairo wall times use the named zone and reject invalid dates, DST gaps and
   for (const [date, time] of [["2030-02-30", "12:00"], ["2030-01-10", "24:00"], ["2027-04-30", "00:30"], ["2027-10-28", "23:30"]]) assert.throws(() => cairoInstant(date, time));
 });
 
-test("all five guest journeys persist exactly one existing business row and one sanitized audit each", async () => {
+test("all five authenticated journeys persist exactly one existing business row and one sanitized audit each", async () => {
   const before = await counts();
   const journeys = [input(), input({ kind: "MODIFICATION" }), input({ kind: "BESPOKE", productId: undefined, variantId: undefined }),
     input({ kind: "CONSULTATION", channel: "ZOOM", preferredDate: "2030-01-10", preferredTime: "12:30" }),
@@ -72,7 +75,7 @@ test("published configuration context is validated server-side while out-of-stoc
   assert.equal(snapshot.sku, "DEV-207"); assert.equal(snapshot.size, "Development alternate");
   for (const value of [input({ productId: developmentId(105), variantId: developmentId(205) }), input({ productId: developmentId(106), variantId: developmentId(206) }), input({ productId: developmentId(102), variantId: developmentId(201) }), input({ productId: randomUUID(), variantId: undefined })]) await assert.rejects(submitRequest(value, f.runtime), { status: 409 });
   await f.data.query("UPDATE product_variants SET is_active=false WHERE id=$1", [developmentId(207)]);
-  try { await assert.rejects(submitRequest(input({ productId: developmentId(102), variantId: developmentId(207) }), f.runtime), { status: 409 }); }
+  try { await f.data.query("DELETE FROM cart_rate_limits"); await assert.rejects(submitRequest(input({ productId: developmentId(102), variantId: developmentId(207) }), f.runtime), { status: 409 }); }
   finally { await f.data.query("UPDATE product_variants SET is_active=true WHERE id=$1", [developmentId(207)]); }
 });
 
@@ -123,11 +126,11 @@ test("validated absence permits corrections under the same UUID and fences a del
 
 test("field validation proves absence only for a valid unused submission UUID", async () => {
   const value = input(), before = await counts();
-  const invalid = await requestsHttp(request({ ...value, email: "invalid@" }), f.runtime), failure = await invalid.json();
-  assert.equal(invalid.status, 400); assert.equal(failure.outcome, "NOT_CREATED"); assert.equal(failure.submissionId, value.submissionId); assert.ok(failure.fieldErrors.email);
+  const invalid = await requestsHttp(request({ ...value, message: "" }), f.runtime), failure = await invalid.json();
+  assert.equal(invalid.status, 400); assert.equal(failure.outcome, "NOT_CREATED"); assert.equal(failure.submissionId, value.submissionId); assert.ok(failure.fieldErrors.message);
   assert.deepEqual(await counts(), before);
   assert.equal((await submitRequest(value, f.runtime)).reference, value.submissionId);
-  const reused = await requestsHttp(request({ ...value, email: "invalid@" }), f.runtime);
+  const reused = await requestsHttp(request({ ...value, message: "" }), f.runtime);
   assert.equal(reused.status, 409); assert.equal((await reused.json()).outcome, "CONFLICT");
   const unverified = await requestsHttp(request({ ...value, submissionId: "invalid" }), f.runtime), unknown = await unverified.json();
   assert.equal(unverified.status, 400); assert.equal(unknown.outcome, "UNKNOWN"); assert.equal(unknown.submissionId, undefined);
@@ -226,9 +229,9 @@ test("cancelled boutique consultations retain inactive location details without 
 
 test("request insertion rolls back when audit fails while distributed rejection counters remain consumed", async () => {
   const value = input(), before = await counts();
-  await f.data.query(`REVOKE INSERT ON audit_events FROM "${f.role}"`);
+  await f.data.query(`REVOKE INSERT ON audit_events FROM "${f.customerRole}"`);
   try { const response = await requestsHttp(request(value), f.runtime); assert.equal(response.status, 503); assert.ok(!(await response.text()).includes(value.email!)); }
-  finally { await f.data.query(`GRANT INSERT ON audit_events TO "${f.role}"`); }
+  finally { await f.data.query(`GRANT INSERT ON audit_events TO "${f.customerRole}"`); }
   assert.deepEqual(await counts(), before);
   assert.ok((await f.data.query("SELECT count(*)::INT AS n FROM cart_rate_limits")).rows[0].n >= 2);
   await submitRequest(value, f.runtime); assert.equal((await detail(value.kind, value.submissionId)).request.status, "NEW");
@@ -245,12 +248,13 @@ test("staff updates roll back on audit failure and restricted SQL cannot alter s
 });
 
 test("distributed contact throttling limits submissions across independent request calls", async () => {
-  const email = `limit-${randomUUID()}@boutique.test`;
+  const email = f.customerEmail;
+  const prior = Number((await f.data.query("SELECT count(*) FROM product_enquiries WHERE contact_email=$1", [email])).rows[0].count);
   for (let i = 0; i < 5; i++) await submitRequest(input({ email }), f.runtime);
   await assert.rejects(submitRequest(input({ email }), f.runtime), { status: 429 });
   const limited = await requestsHttp(request(input({ email })), f.runtime), failure = await limited.json();
   assert.equal(limited.status, 429); assert.equal(failure.outcome, "UNKNOWN"); assert.equal(failure.submissionId, undefined);
-  assert.equal((await f.data.query("SELECT count(*)::INT AS n FROM product_enquiries WHERE contact_email=$1", [email])).rows[0].n, 5);
+  assert.equal((await f.data.query("SELECT count(*)::INT AS n FROM product_enquiries WHERE contact_email=$1", [email])).rows[0].n - prior, 5);
 });
 
 test("database constraints reject mismatched selected variants, invalid channels and oversized snapshots", async () => {
@@ -259,6 +263,7 @@ test("database constraints reject mismatched selected variants, invalid channels
 });
 
 test("reviewed request grants refuse remote-target mismatch and pass only the explicit isolated local rehearsal", async () => {
+  const historical = await catalogueFixture(undefined, true, 13); const f = historical;
   const url = new URL(f.ownerUrl), role = "lapalme_staging_app", artifact = "infra/neon/staging-request-grants.review.sql", password = randomBytes(32).toString("base64url");
   assert.equal((await f.data.query("SELECT rolname FROM pg_roles WHERE rolname=$1", [role])).rowCount, 0, "Never alter a pre-existing application role in this rehearsal.");
   await f.data.query(`CREATE ROLE ${role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
@@ -282,7 +287,7 @@ test("reviewed request grants refuse remote-target mismatch and pass only the ex
       await assert.rejects(application.query(sql), { code: "42501" });
     const attributes = (await application.query("SELECT rolsuper,rolcreaterole,rolcreatedb,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows[0];
     assert.deepEqual(attributes, { rolsuper: false, rolcreaterole: false, rolcreatedb: false, rolbypassrls: false });
-  } finally { if (application) await application.end(); await f.data.query(`DROP OWNED BY ${role}`); await f.data.query(`DROP ROLE ${role}`); }
+  } finally { if (application) await application.end(); await f.data.query(`DROP OWNED BY ${role}`); await f.data.query(`DROP ROLE ${role}`); await historical.close(); }
 });
 
 test("0012 to 0013 preserves legacy enquiries, bespoke requests, confirmed appointments and seeded variant data", { timeout: 60000 }, async () => {
@@ -302,7 +307,7 @@ test("0012 to 0013 preserves legacy enquiries, bespoke requests, confirmed appoi
     const tables = ["product_enquiries", "bespoke_requests", "appointment_requests", "product_variants", "audit_events"] as const;
     const before = new Map<string, unknown[]>();
     for (const table of tables) before.set(table, (await legacy.data.query(`SELECT to_jsonb(t) AS original FROM ${table} t ORDER BY id`)).rows);
-    assert.deepEqual(await runMigrations(legacy.ownerUrl), ["0013_quotation_requests_specifications.sql"]);
+    assert.deepEqual(await runMigrations(legacy.ownerUrl), ["0013_quotation_requests_specifications.sql", "0014_customer_authentication.sql"]);
     assert.deepEqual((await legacy.data.query("SELECT * FROM schema_migrations WHERE version<='0012' ORDER BY version")).rows, ledger, "All twelve established ledger rows and checksums stay byte-for-byte equivalent.");
     for (const table of tables) {
       const additions = table === "product_variants" ? ["metal_weight_grams", "metal_weight_basis"] : table === "audit_events" ? [] : ["variant_id", "product_context", ...(table === "appointment_requests" ? ["consultation_channel"] : [])];

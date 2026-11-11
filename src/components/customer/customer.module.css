@@ -1,0 +1,7 @@
+.menu { position: relative; flex-shrink: 0; }
+.accountButton { display: inline-flex; min-height: 44px; padding: .6rem .4rem; align-items: center; color: var(--ivory); font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; cursor: pointer; }
+.panel { position: absolute; right: 0; top: 100%; z-index: 60; width: 190px; background: #090807; border: 1px solid var(--border); padding: .75rem; color: var(--ivory); font-size: .8rem; }
+.panel a,.panel button { display: block; width: 100%; min-height: 44px; padding: .6rem; text-align: left; cursor: pointer; }
+.accountButton:focus-visible,.panel :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.account { padding-top: 3rem; }
+.account h1 { font-size: clamp(2.4rem,6vw,4rem); margin-bottom: 1.5rem; }

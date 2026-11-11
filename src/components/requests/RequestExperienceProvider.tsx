@@ -42,6 +42,17 @@ export function RequestExperienceProvider({ children }: { children: ReactNode })
     return { slots: new Map(), getGuard: () => guard, registerGuard: (value) => { guard = value; return () => { if (guard === value) guard = null; }; } };
   });
   useEffect(() => {
+    const clear = () => {
+      for (const slot of experience.slots.values()) {
+        const value = slot.get() as { draft?: Record<string, unknown>; attempt?: { submissionId?: string }; recoveryReference?: string };
+        if (value?.draft) slot.update({ ...value, draft: { ...value.draft, name: "", email: "", phone: "", message: "", preferredDate: "", preferredTime: "" },
+          recoveryReference: value.attempt?.submissionId || value.recoveryReference || "", attempt: null, pending: false, uncertain: false, reference: "", error: "", fieldErrors: {} });
+      }
+    };
+    window.addEventListener("lapalme-customer-clear", clear);
+    return () => window.removeEventListener("lapalme-customer-clear", clear);
+  }, [experience]);
+  useEffect(() => {
     const scope = crypto.randomUUID(), native = navigation();
     const originalPush = history.pushState, originalReplace = history.replaceState;
     let index = 0, nativeIndex = native?.currentEntry?.index;

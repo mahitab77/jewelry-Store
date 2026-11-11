@@ -15,7 +15,7 @@ let browser: ReturnType<typeof h.current>["browser"], fixture: ReturnType<typeof
 type Page = Awaited<ReturnType<typeof browser.newPage>>;
 beforeEach(() => { ({ browser, fixture } = h.current()); });
 const syntheticMessage = "LOCAL TEST ONLY. Please discuss this synthetic design and its current availability.";
-const customerEmail = () => `local-experience-${randomUUID().slice(0, 8)}@boutique.test`;
+
 async function bounded<T>(promise: Promise<T>, message: string) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try { return await Promise.race([promise, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), 15000); })]); }
@@ -23,13 +23,13 @@ async function bounded<T>(promise: Promise<T>, message: string) {
 }
 async function context(width = 1440, withoutNavigationAPI = false) {
   const c = await browser.newContext({ ignoreHTTPSErrors: true, reducedMotion: "reduce", viewport: { width, height: 1000 } });
-  c.setDefaultTimeout(15000); c.setDefaultNavigationTimeout(15000);
+  await h.customerContext(c); c.setDefaultTimeout(15000); c.setDefaultNavigationTimeout(15000);
   if (withoutNavigationAPI) await c.addInitScript(() => Object.defineProperty(window, "navigation", { configurable: true, value: undefined }));
   return c;
 }
 async function details(page: Page) {
   await page.getByLabel("Your name (required)", { exact: true }).fill("Local Experience Fixture");
-  await page.getByRole("textbox", { name: /^Email/ }).fill(customerEmail());
+  assert.equal(await page.getByRole("textbox", { name: /^Email/ }).inputValue(), fixture.customerEmail);
   await page.locator('textarea[name="message"]').fill(syntheticMessage);
 }
 function requestResponse(page: Page) {
@@ -54,7 +54,7 @@ async function dialogAction(page: Page, accept: boolean, action: () => Promise<u
   await operation;
 }
 
-test("unowned campaign parameters reach all five guest request journeys with the selected configuration", { timeout: 120000 }, async () => {
+test("unowned campaign parameters reach all five authenticated request journeys with the selected configuration", { timeout: 120000 }, async () => {
   for (const journey of ["QUOTATION", "MODIFICATION", "BESPOKE", "ZOOM", "BOUTIQUE"] as const) {
     const c = await context();
     try {
@@ -109,16 +109,16 @@ for (const withoutNavigationAPI of [false, true]) test(`dirty draft survives can
       await page.waitForURL(origin + "/appointment"); assert.equal(await page.locator('textarea[name="message"]').inputValue(), syntheticMessage);
     }
     assert.equal(await page.evaluate(() => history.state.localFixture), "preserve-external-state");
-    await dialogAction(page, true, () => page.evaluate(() => history.back())); await page.waitForURL(origin + "/contact?intent=BESPOKE");
-    for (let attempt = 0; attempt < 2; attempt++) { await dialogAction(page, false, () => page.evaluate(() => history.forward())); await page.waitForURL(origin + "/contact?intent=BESPOKE"); }
+    await dialogAction(page, true, () => page.evaluate(() => history.back())); await page.waitForURL(origin + "/contact?intent=BESPOKE"); await page.getByLabel("Your name (required)", { exact: true }).waitFor();
+    for (let attempt = 0; attempt < 2; attempt++) { await dialogAction(page, false, () => page.evaluate(() => history.forward())); await page.waitForURL(origin + "/contact?intent=BESPOKE"); await page.getByLabel("Your name (required)", { exact: true }).waitFor(); }
     await dialogAction(page, true, () => page.evaluate(() => history.forward())); await page.waitForURL(origin + "/appointment");
     assert.equal(await page.getByRole("textbox", { name: /^Email/ }).inputValue(), email); assert.equal(await page.locator('textarea[name="message"]').inputValue(), syntheticMessage);
     await dialogAction(page, false, () => page.getByRole("button", { name: "Discard request details", exact: true }).click());
     assert.equal(await page.locator('textarea[name="message"]').inputValue(), syntheticMessage);
     await dialogAction(page, true, () => page.getByRole("button", { name: "Discard request details", exact: true }).click());
-    assert.equal(await page.getByLabel("Your name (required)", { exact: true }).inputValue(), "");
+    assert.equal(await page.getByLabel("Your name (required)", { exact: true }).inputValue(), "Local customer fixture");
     assert.equal(await page.locator('textarea[name="message"]').inputValue(), "");
-    await page.evaluate(() => history.back()); await page.waitForURL(origin + "/contact?intent=BESPOKE");
+    await page.evaluate(() => history.back()); await page.waitForURL(origin + "/contact?intent=BESPOKE"); await page.getByLabel("Your name (required)", { exact: true }).waitFor();
     await dialogAction(page, true, () => page.getByRole("button", { name: "Discard request details", exact: true }).click());
     await page.evaluate(() => history.forward()); await page.waitForURL(origin + "/appointment");
     assert.equal(await page.locator('textarea[name="message"]').inputValue(), "");
@@ -142,7 +142,7 @@ test("native hash entries and Next null replacement retain indexed fallback hist
     for (let attempt = 0; attempt < 3; attempt++) { await dialogAction(page, false, () => page.evaluate(() => history.back())); await page.waitForURL(origin + "/appointment"); }
     await dialogAction(page, true, () => page.evaluate(() => history.back())); await page.waitForURL(origin + "/contact?intent=BESPOKE#catalogue-content");
     assert.equal(await page.getByRole("textbox", { name: /^Email/ }).inputValue(), email);
-    await page.evaluate(() => history.back()); await page.waitForURL(origin + "/contact?intent=BESPOKE");
+    await page.evaluate(() => history.back()); await page.waitForURL(origin + "/contact?intent=BESPOKE"); await page.getByLabel("Your name (required)", { exact: true }).waitFor();
     await page.evaluate(() => history.forward()); await page.waitForURL(origin + "/contact?intent=BESPOKE#catalogue-content");
     assert.equal(await page.locator('textarea[name="message"]').inputValue(), syntheticMessage);
     await dialogAction(page, true, () => page.evaluate(() => history.forward())); await page.waitForURL(origin + "/appointment");
@@ -150,7 +150,7 @@ test("native hash entries and Next null replacement retain indexed fallback hist
   } finally { await c.close(); }
 });
 
-test("missing name and missing Zoom email stay editable and corrections reuse the same UUID", { timeout: 90000 }, async () => {
+test("missing name and invalid optional telephone stay editable and corrections reuse the same UUID", { timeout: 90000 }, async () => {
   const c = await context(); const bodies: PublicRequestInput[] = [];
   try {
     const page = await c.newPage(); await page.goto(origin + "/appointment"); await details(page);
@@ -159,11 +159,12 @@ test("missing name and missing Zoom email stay editable and corrections reuse th
     let response = await send(page, 400), result = await response.json(); assert.equal(result.outcome, "NOT_CREATED");
     await page.waitForFunction(() => document.activeElement?.getAttribute("name") === "name");
     assert.equal(await page.getByLabel("Your name (required)", { exact: true }).isEnabled(), true);
-    await page.getByLabel("Your name (required)", { exact: true }).fill("Local Experience Fixture"); await page.getByRole("textbox", { name: /^Email/ }).fill(""); await page.getByLabel("Telephone", { exact: true }).fill("+201001234567");
+    await page.getByLabel("Your name (required)", { exact: true }).fill("Local Experience Fixture"); assert.equal(await page.getByRole("textbox", { name: /^Email/ }).getAttribute("readonly"), ""); await page.getByLabel("Telephone", { exact: true }).fill("invalid");
     response = await send(page, 400); result = await response.json(); assert.equal(result.outcome, "NOT_CREATED");
-    await page.waitForFunction(() => document.activeElement?.getAttribute("name") === "email"); assert.equal(await page.getByRole("textbox", { name: /^Email/ }).isEnabled(), true);
+    await page.waitForFunction(() => document.activeElement?.getAttribute("name") === "phone"); assert.equal(await page.getByRole("textbox", { name: /^Email/ }).isEnabled(), true);
     assert.equal(await page.locator('textarea[name="message"]').inputValue(), syntheticMessage);
-    await page.getByRole("textbox", { name: /^Email/ }).fill(customerEmail());
+    assert.equal(await page.getByRole("textbox", { name: /^Email/ }).inputValue(), fixture.customerEmail);
+    await page.getByLabel("Telephone", { exact: true }).fill("+201001234567");
     const receipt = await (await send(page)).json(); assert.equal(new Set(bodies.map(body => body.submissionId)).size, 1); assert.equal(receipt.reference, bodies[0].submissionId); assert.equal(await total(receipt.reference), 1);
   } finally { await c.close(); }
 });
@@ -203,16 +204,16 @@ test("uncertain committed request keeps its frozen UUID across history and every
       else if (bodies.length === 2) await route.fulfill({ status: 400, json: { message: "LOCAL TEST ONLY: unproven validation error.", fieldErrors: { name: "Do not unlock." }, outcome: "UNKNOWN" } });
       else if (bodies.length === 3) await route.fulfill({ status: 409, json: { message: "LOCAL TEST ONLY: key conflict.", outcome: "CONFLICT" } });
       else if (bodies.length === 4) await route.fulfill({ status: 429, json: { message: "LOCAL TEST ONLY: throttled.", outcome: "UNKNOWN" } });
-      else if (bodies.length === 5) await route.fulfill({ status: 403, json: { message: "LOCAL TEST ONLY: origin unverified.", outcome: "UNKNOWN" } });
-      else if (bodies.length === 6) await route.fulfill({ status: 503, contentType: "application/json", body: "LOCAL TEST ONLY: incomplete JSON receipt" });
-      else if (bodies.length === 7) await route.fulfill({ status: 409, json: { message: "LOCAL TEST ONLY: proof for another reference.", outcome: "NOT_CREATED", submissionId: randomUUID() } });
+      // Authentication denial now clears private state; it has its own customer privacy regression.
+      else if (bodies.length === 5) await route.fulfill({ status: 503, contentType: "application/json", body: "LOCAL TEST ONLY: incomplete JSON receipt" });
+      else if (bodies.length === 6) await route.fulfill({ status: 409, json: { message: "LOCAL TEST ONLY: proof for another reference.", outcome: "NOT_CREATED", submissionId: randomUUID() } });
       else await route.continue();
     });
     await send(page, 503); await dialogAction(page, false, () => page.evaluate(() => history.back()), /receipt|reference/i); await page.waitForURL(origin + "/contact");
     await dialogAction(page, true, () => page.evaluate(() => history.back()), /receipt|reference/i); await page.waitForURL(origin + "/appointment");
     await page.evaluate(() => history.forward()); await page.waitForURL(origin + "/contact");
     assert.equal(await page.getByLabel("Your name (required)", { exact: true }).isDisabled(), true);
-    for (const status of [400, 409, 429, 403, 503, 409]) { await send(page, status, true); assert.equal(await page.getByLabel("Your name (required)", { exact: true }).isDisabled(), true); }
+    for (const status of [400, 409, 429, 503, 409]) { await send(page, status, true); assert.equal(await page.getByLabel("Your name (required)", { exact: true }).isDisabled(), true); }
     const receipt = await (await send(page, 200, true)).json(); for (const body of bodies) assert.deepEqual(body, bodies[0]); assert.equal(await total(receipt.reference), 1);
     await page.getByRole("link", { name: "Explore the collections", exact: true }).first().click(); await page.waitForURL(origin + "/collections"); await page.evaluate(() => history.back()); await page.waitForURL(origin + "/contact");
     await page.getByRole("heading", { name: "Your request has been received.", exact: true }).waitFor(); assert.equal(await page.getByRole("button", { name: "Send request", exact: true }).count(), 0);
@@ -234,7 +235,7 @@ test("explicit pending discard warns and a late committed receipt cannot resurre
     await dialogAction(page, true, () => page.getByRole("button", { name: "Discard request details", exact: true }).click(), /may already have been received.*does not cancel.*duplicate/i);
     release(); await receipt;
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    assert.equal(await page.getByLabel("Your name (required)", { exact: true }).isEnabled(), true); assert.equal(await page.getByLabel("Your name (required)", { exact: true }).inputValue(), "");
+    assert.equal(await page.getByLabel("Your name (required)", { exact: true }).isEnabled(), true); assert.equal(await page.getByLabel("Your name (required)", { exact: true }).inputValue(), "Local customer fixture");
     assert.equal(await page.locator('textarea[name="message"]').inputValue(), ""); assert.equal(await page.getByRole("heading", { name: "Your request has been received.", exact: true }).count(), 0); assert.equal(await page.getByRole("button", { name: "Retry this same request", exact: true }).count(), 0);
     assert.ok(original); assert.equal(await total(original.submissionId), 1, "Discard abandons local recovery; it cannot cancel a committed request.");
   } finally { release(); await c.close(); }

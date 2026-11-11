@@ -22,6 +22,7 @@ beforeEach(() => { ({ browser, fixture } = h.current()); });
 afterEach(async () => { while (categories.length) await fixture.data.query("DELETE FROM categories WHERE id=$1", [categories.pop()]); });
 async function context(width = 1440) {
   const c = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width, height: 1000 }, reducedMotion: "reduce" });
+  await h.customerContext(c);
   c.setDefaultTimeout(15000); c.setDefaultNavigationTimeout(15000); return c;
 }
 async function category(extra: { slug?: string; parentId?: string; visible?: boolean; description?: string } = {}) {

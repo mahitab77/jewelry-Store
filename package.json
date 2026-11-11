@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:customer": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/customer-auth.test.mts",
+    "test:customer:browser": "node --experimental-strip-types --conditions=react-server --test --test-concurrency=1 tests/customer-auth.browser.mts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

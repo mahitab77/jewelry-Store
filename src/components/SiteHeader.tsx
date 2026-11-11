@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { primaryNavigation } from "@/lib/navigation";
 import { CartBag } from "./cart/CartBag";
+import { CustomerAccountMenu } from "./customer/CustomerAccountMenu";
 
 export function SiteHeader({ quotationOnly = true }: { quotationOnly?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -57,7 +58,7 @@ export function SiteHeader({ quotationOnly = true }: { quotationOnly?: boolean }
               className="h-16 w-auto object-contain sm:h-20"
             />
           </span>
-          <span className="navbar-brand-text font-display hidden truncate text-ivory lg:inline">
+          <span className="navbar-brand-text font-display hidden text-ivory 2xl:inline whitespace-nowrap">
             La Palme d&apos;Or Gems
           </span>
         </a>
@@ -75,6 +76,7 @@ export function SiteHeader({ quotationOnly = true }: { quotationOnly?: boolean }
         </div>
 
         <div className="relative flex shrink-0 items-center gap-2 sm:gap-3">
+          <CustomerAccountMenu />
           {!quotationOnly ? <CartBag onNavigate={close} /> : null}
           <button
             ref={toggle}

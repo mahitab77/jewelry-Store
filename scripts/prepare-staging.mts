@@ -62,7 +62,7 @@ function checkedSql(expression: string, name: string) {
 export async function stagingMigrationReview() {
   const pinned: Migration[] = JSON.parse(await readFile(join(directory, 'migrations.sha256.json'), 'utf8'));
   const names = (await readdir(join(root, 'db/migrations'))).filter(n => n.endsWith('.sql')).sort();
-  requireValue(pinned.length === 13 && names.length === 13);
+  requireValue(pinned.length === 14 && names.length === 14);
   const sources: string[] = [];
   for (const [i, file] of pinned.entries()) {
     requireValue(file.version === String(i + 1).padStart(4, '0') && file.filename === names[i] && new RegExp(`^${file.version}_[a-z0-9_]+\\.sql$`).test(file.filename) && /^[a-f0-9]{64}$/.test(file.sha256));

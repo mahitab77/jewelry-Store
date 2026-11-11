@@ -13,14 +13,13 @@ type Page = Awaited<ReturnType<typeof browser.newPage>>;
 type Context = Awaited<ReturnType<typeof browser.newContext>>;
 beforeEach(() => { ({ browser,fixture } = h.current()); });
 const token = () => randomUUID().slice(0,8);
-const email = () => `local-request-${token()}@boutique.test`;
 async function context(width = 1440): Promise<Context> {
   const c = await browser.newContext({ ignoreHTTPSErrors: true, reducedMotion: "reduce", viewport: { width, height: 1000 }, timezoneId: "America/Los_Angeles" });
-  c.setDefaultTimeout(15000); c.setDefaultNavigationTimeout(15000); return c;
+  await h.customerContext(c); c.setDefaultTimeout(15000); c.setDefaultNavigationTimeout(15000); return c;
 }
 async function details(page: Page, value = "LOCAL TEST ONLY. Please discuss this synthetic request with the boutique.") {
   await page.getByLabel("Your name (required)",{ exact: true }).fill("Local Request Fixture");
-  await page.getByRole("textbox",{ name: /^Email/ }).fill(email());
+  assert.equal(await page.getByRole("textbox",{ name: /^Email/ }).inputValue(), fixture.customerEmail);
   await page.locator('textarea[name="message"]').fill(value);
 }
 async function send(page: Page, expected = 200) {
@@ -32,7 +31,7 @@ async function send(page: Page, expected = 200) {
   return response;
 }
 async function apiRequest(c: Context, kind: RequestKind, extra: Partial<PublicRequestInput> = {}) {
-  const input: PublicRequestInput = { submissionId: randomUUID(), kind, name: "Local Inbox Fixture", email: email(), message: "LOCAL TEST ONLY. A private synthetic customer request for verification.", ...extra };
+  const input: PublicRequestInput = { submissionId: randomUUID(), kind, name: "Local Inbox Fixture", message: "LOCAL TEST ONLY. A private synthetic customer request for verification.", ...extra, email: fixture.customerEmail! };
   const response = await c.request.post(origin + "/api/requests",{ headers:{ Origin:origin },data:input }); assert.equal(response.status(),200); return input;
 }
 async function adminPost(page: Page, path: string, button: string, expected = 200) {
@@ -153,10 +152,12 @@ async function backgroundInbox(c: Context, page: Page) {
   // The cached in-process Playwright controller enables per-session focus
   // emulation. Only its own CDP session can remove that automation override;
   // a newly attached CDP session leaves every tab artificially visible.
-  type ControlledPage = { _connection?: { toImpl(value: unknown): { delegate?: { _mainFrameSession?: { _client?: { send(method: string,params: {enabled:boolean}): Promise<unknown> } } } } } };
+  type Delegate = { _mainFrameSession?: { _client?: { send(method: string,params: {enabled:boolean}): Promise<unknown> } } };
+  type ControlledPage = { _connection?: { toImpl(value: unknown): { delegate?: Delegate; _delegate?: Delegate } } };
   const nativeFocus = async (target: Page) => {
     const connection = (target as unknown as ControlledPage)._connection;
-    const controller = connection?.toImpl(target).delegate?._mainFrameSession?._client;
+    const implementation = connection?.toImpl(target);
+    const controller = (implementation?._delegate ?? implementation?.delegate)?._mainFrameSession?._client;
     assert.ok(controller && typeof controller.send === "function","Native tab visibility requires the cached in-process Playwright Chromium controller.");
     await controller.send("Emulation.setFocusEmulationEnabled",{enabled:false});
   };
@@ -166,7 +167,7 @@ async function backgroundInbox(c: Context, page: Page) {
   return other;
 }
 
-test("quotation catalogue keeps selected out-of-stock configurations, known metals and all five guest request journeys", { timeout:150000 }, async () => {
+test("quotation catalogue keeps selected out-of-stock configurations, known metals and all five authenticated request journeys", { timeout:150000 }, async () => {
   const c = await context();
   try {
     await fixture.data.query("UPDATE product_variants SET metal_type=NULL,metal_purity='18K',metal_color='Yellow',metal_weight_grams=3.250,metal_weight_basis='ACTUAL' WHERE id=$1",[id(207)]);
@@ -207,10 +208,10 @@ test("Zoom contact errors and Cairo clock-change validation preserve editable fo
   const c = await context();
   try {
     const page = await c.newPage(); await page.goto(origin + "/appointment"); await details(page);
-    await page.getByRole("textbox",{ name:/^Email/ }).fill(""); await page.getByLabel("Telephone",{ exact:true }).fill("+201001234567");
-    await send(page,400); await page.waitForFunction(() => document.activeElement?.getAttribute("name") === "email");
+    assert.equal(await page.getByRole("textbox",{ name:/^Email/ }).getAttribute("readonly"), ""); await page.getByLabel("Telephone",{ exact:true }).fill("invalid");
+    await send(page,400); await page.waitForFunction(() => document.activeElement?.getAttribute("name") === "phone");
     assert.equal(await page.locator('textarea[name="message"]').inputValue(),"LOCAL TEST ONLY. Please discuss this synthetic request with the boutique.");
-    await page.getByRole("textbox",{ name:/^Email/ }).fill(email()); await page.getByLabel("Preferred date (Africa/Cairo)",{ exact:true }).fill("2027-04-30"); await page.getByLabel("Preferred time (Africa/Cairo)",{ exact:true }).fill("00:30");
+    await page.getByLabel("Telephone",{ exact:true }).fill("+201001234567"); await page.getByLabel("Preferred date (Africa/Cairo)",{ exact:true }).fill("2027-04-30"); await page.getByLabel("Preferred time (Africa/Cairo)",{ exact:true }).fill("00:30");
     await send(page,400); assert.match(await page.locator("main").getByRole("alert").innerText(),/clock|unavailable|ambiguous/i);
     assert.equal(await page.getByLabel("Your name (required)",{ exact:true }).inputValue(),"Local Request Fixture");
     await page.getByLabel("Preferred date (Africa/Cairo)",{ exact:true }).fill("2030-01-15"); await page.getByLabel("Preferred time (Africa/Cairo)",{ exact:true }).fill("14:30"); await send(page);
@@ -218,7 +219,7 @@ test("Zoom contact errors and Cairo clock-change validation preserve editable fo
   } finally { await c.close(); }
 });
 
-test("uncertain guest receipt retries only the identical frozen submission and creates one record", async () => {
+test("uncertain authenticated receipt retries only the identical frozen submission and creates one record", async () => {
   const c = await context(); let attempts = 0; const bodies: unknown[] = [];
   try {
     const page = await c.newPage(); await page.goto(origin + "/contact?intent=BESPOKE"); await details(page);

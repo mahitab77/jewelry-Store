@@ -1,45 +1,15 @@
 import assert from "node:assert/strict";
-import { after, before, test } from "node:test";
-import { spawn, type ChildProcess } from "node:child_process";
-import { createServer } from "node:net";
+import { beforeEach, test } from "node:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
 import sharp from "sharp";
-
-// Browser plugin not available. Exercise the existing production appointment
-// page through cached Playwright, without a database, provider or submission.
-const moduleName = process.env.PLAYWRIGHT_MODULE ? pathToFileURL(resolve(process.env.PLAYWRIGHT_MODULE)).href : "playwright";
-const { chromium } = await import(moduleName);
-let browser: Awaited<ReturnType<typeof chromium.launch>>, server: ChildProcess, origin: string;
-type Page = Awaited<ReturnType<typeof browser.newPage>>;
-
-before(async () => {
-  const reservation = createServer();
-  await new Promise<void>(done => reservation.listen(0, "127.0.0.1", done));
-  const address = reservation.address(); assert.ok(address && typeof address !== "string");
-  const port = address.port; await new Promise<void>(done => reservation.close(() => done()));
-  origin = `http://127.0.0.1:${port}`;
-  const disabled = ["DATABASE_URL", "ADMIN_DATABASE_URL", "CART_DATABASE_URL", "PAYMENT_DATABASE_URL", "TEST_DATABASE_URL", "MEDIA_CLEANUP_DATABASE_URL", "BACKUP_DATABASE_URL", "RESTORE_DATABASE_URL", "NEON_STAGING_DIRECT_URL", "BETTER_AUTH_URL", "BETTER_AUTH_SECRET", "ADMIN_TRUSTED_IP_HEADER", "CART_ORIGIN", "CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET", "PAYMOB_SECRET_KEY", "PAYMOB_PUBLIC_KEY", "PAYMOB_HMAC_SECRET", "PAYMOB_API_KEY", "PAYMOB_INTEGRATION_ID", "PAYMOB_OWNER_ID", "PGOPTIONS"];
-  server = spawn(process.execPath, [resolve("node_modules/next/dist/bin/next"), "start", "--hostname", "127.0.0.1", "--port", String(port)], {
-    windowsHide: true, stdio: "ignore", env: { ...process.env, ...Object.fromEntries(disabled.map(key => [key, ""])), NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1", COMMERCE_MODE: "QUOTATION_ONLY", SITE_URL: origin, SITE_INDEXING_ALLOWED: "false", PAYMENTS_TEST_ENABLED: "false", PAYMENTS_RECONCILIATION_READY: "false", CHECKOUT_DRAFT_RETENTION_READY: "false" },
-  });
-  let ready = false;
-  for (let attempt = 0; attempt < 200; attempt++) {
-    if (server.exitCode !== null) throw new Error("Local consultation server exited before readiness.");
-    try { ready = (await fetch(origin + "/appointment", { signal: AbortSignal.timeout(3000) })).ok; } catch { /* Startup only. */ }
-    if (ready) break;
-    await new Promise(done => setTimeout(done, 100));
-  }
-  assert.ok(ready, "Local consultation server must become ready.");
-  browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_EXECUTABLE || undefined });
-}, { timeout: 60000 });
-
-after(async () => {
-  if (browser) await browser.close();
-  if (server && server.exitCode === null) { const stopped = new Promise<void>(done => server.once("close", () => done())); server.kill(); await stopped; }
-});
-
+import { adminBrowserHarness } from "./helpers/admin-browser.mts";
+// The same native-control checks now run after verified customer authentication.
+const h=adminBrowserHarness(true,false,false,false,{requests:true});
+const {origin}=h;
+let browser: ReturnType<typeof h.current>["browser"];
+beforeEach(()=>{browser=h.current().browser;});
+type Page=Awaited<ReturnType<typeof browser.newPage>>;
 async function signature(page: Page, name: string) {
   return page.locator(`[name="${name}"]`).evaluate((input: HTMLElement) => {
     const s = getComputedStyle(input), b = input.getBoundingClientRect();
@@ -73,14 +43,14 @@ async function iconContrast(page: Page, type: "date" | "time", width: number, ch
 }
 
 for (const width of [320, 768, 1024, 1440]) for (const channel of ["ZOOM", "BOUTIQUE"] as const) test(`${channel} native consultation controls retain contrast and interactions at ${width}px`, { timeout: 60000 }, async () => {
-  const context = await browser.newContext({ viewport: { width, height: 1000 }, deviceScaleFactor: 1, reducedMotion: "reduce", locale: "en-US" });
+  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width, height: 1000 }, deviceScaleFactor: 1, reducedMotion: "reduce", locale: "en-US" });
   context.setDefaultTimeout(15000); context.setDefaultNavigationTimeout(30000);
   let mutations = 0; const errors: string[] = [];
   await context.route("**/*", async (route: { request(): { method(): string; url(): string }; continue(): Promise<void>; abort(): Promise<void> }) => {
     if (!['GET', 'HEAD'].includes(route.request().method())) { mutations++; await route.abort(); } else if (new URL(route.request().url()).origin !== origin) await route.abort(); else await route.continue();
   });
   try {
-    const page = await context.newPage(); page.on("pageerror", () => errors.push("Page runtime error"));
+    await h.customerContext(context); const page = await context.newPage(); page.on("pageerror", () => errors.push("Page runtime error"));
     assert.equal((await page.goto(origin + "/appointment", { waitUntil: "networkidle" }))!.status(), 200); assert.match(await page.title(), /Private Appointments/);
     assert.equal(await page.locator("nextjs-portal").count(), 0); await page.getByLabel("Consultation preference", { exact: true }).selectOption(channel);
     const date = page.locator('input[name="preferredDate"]'), time = page.locator('input[name="preferredTime"]');

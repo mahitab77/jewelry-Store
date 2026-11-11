@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { after,before,test } from 'node:test';
 import { randomBytes,randomUUID,createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp,readFile,writeFile,rm } from 'node:fs/promises';
+import { mkdtemp,readFile,writeFile,rm,mkdir,readdir,copyFile } from 'node:fs/promises';
 import { join,resolve,sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import pg from 'pg';
@@ -55,7 +55,12 @@ before(async()=>{
   assert.deepEqual(await plan(resolve('infra/neon/staging-runtime-roles.review.sql')),{status:0,guardRejected:false,created:true,injectedFailure:false});
   provisioned=true;
   assert.equal((await base.data.query('SELECT count(*)::int n FROM schema_migrations')).rows[0].n,12);
-  assert.deepEqual(await runMigrations(base.ownerUrl),['0013_quotation_requests_specifications.sql']);
+  // Rehearse this immutable historical backup contract at its accepted schema.
+  // It has no authority to read the new customer identities. The current-schema
+  // owner backup/restore and customer permission suites cover migration 0014.
+  const historical=join(root,'migrations');await mkdir(historical);
+  for(const file of (await readdir('db/migrations')).filter(f=>f.endsWith('.sql')).sort().slice(0,13))await copyFile(join('db/migrations',file),join(historical,file));
+  assert.deepEqual(await runMigrations(base.ownerUrl,{directory:historical}),['0013_quotation_requests_specifications.sql']);
   for(const n of names){const u=new URL(base.ownerUrl);u.username=role(n);u.password=passwords[n];urls[n]=u.toString();pools[n]=new pg.Pool(databaseConfig(urls[n]));}
   runtime=createAdminRuntime({...base.authConfig,databaseUrl:urls.admin});
 },{timeout:90000});
@@ -75,7 +80,7 @@ async function headers(which:'OWNER'|'ADMIN'|'CATALOGUE_MANAGER'='OWNER'){
 }
 test('migration source bytes retain all twelve accepted checksums',async()=>{
   const manifest=JSON.parse(await readFile('infra/cloud-run/migrations.sha256.json','utf8')) as {filename:string;sha256:string}[];
-  assert.equal(manifest.length,13);
+  assert.equal(manifest.length,14);
   const historical=manifest.slice(0,12),approved=await readFile('infra/neon/staging-runtime-roles.review.sql','utf8');
   assert.equal(historical.length,12);
   for(const m of historical){assert.ok(approved.includes("'"+m.filename+"','"+m.sha256+"'"));assert.equal(createHash('sha256').update(await readFile('db/migrations/'+m.filename)).digest('hex'),m.sha256);}

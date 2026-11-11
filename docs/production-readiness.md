@@ -2327,3 +2327,261 @@ rehearsal used a temporary psql transport to actual loopback inside that contain
 the reviewed SQL and assertions remained unchanged. The v4 image push,
 deployment, live media acceptance and synthetic hosted records require separate
 approval; none is authorized by this completion note.
+
+### Customer authentication and My Account — local acceptance, 2026-11-11
+
+**PASS for local implementation and verification. Hosted registration remains
+disabled; no hosted acceptance is claimed.** Initial worktree was clean, on
+`master` at `77e8d1c1c24c00e935783e350c1379630e3a035d`. HEAD remains unchanged.
+
+1. **Implementation.** Public browsing remains available. The existing shared
+   form now requires verified customer authentication for quotations,
+   modifications, bespoke designs and Zoom/boutique consultations. My Account
+   provides requests, appointments and personal details. No duplicate form,
+   purchasing flow or additional account features were introduced.
+2. **Exact files.** The complete modified/created inventory follows below.
+   Existing Rings products/assets, Cloudinary configuration, administrator auth
+   configuration/roles, payment/order/inventory state machines, migrations
+   0001–0013 and Cloud Run configuration were not changed. The administrator
+   limiter delegates its existing SQL contract to a shared fixed-table helper.
+   The checksum manifest/offline preparation recognizes migration 0014; no
+   deployment was executed.
+3. **Authentication and isolation.** Installed Better Auth 1.7.14 has its own
+   customer configuration, tables, independent secret, `/api/customer-auth`
+   endpoint and `lapalme_customer` cookie namespace. Cookies are Secure,
+   HttpOnly, host-only and SameSite Lax. Database sessions expire absolutely
+   after seven days, without cookie caching or sliding refresh. Only POST
+   `send-code`, `verify-code`, `sign-out` and GET `session` are exposed; raw
+   library routes are blocked. Administrator/customer sessions are isolated,
+   including accounts with the same email address.
+4. **Database and permissions.** Migration 0014 adds five customer authentication
+   tables/counters without rewriting business data. Stable provider/UUID subject
+   linkage reuses the existing profile identity constraint. A separate restricted
+   runtime grant proposal excludes staff data and financial writes. Two
+   timestamp-only UPDATE grants support PostgreSQL snapshot `FOR SHARE` locks;
+   application code makes no catalogue updates. The artifact ends in ROLLBACK.
+   See [database-schema.md](database-schema.md) for the schema and historical
+   backup-role boundary. No migration/grant was applied to hosted Neon.
+5. **Registration and return journey.** First registration asks for name/email,
+   then the code; returning customers supply email/code. Validated relative
+   destinations preserve intent, product slug, configuration UUID and
+   consultation preference. Foreign URLs, unknown/private fields, duplicate
+   parameters and invalid combinations are rejected. Verified name/email and
+   optional stored phone prefill the existing form. Email is authoritative on
+   the server. Drafts remain in document memory, scoped by customer/selection;
+   codes and personal messages never enter URLs or persistent browser storage.
+6. **Verification and delivery.** Eight-digit codes expire after five minutes,
+   allow three attempts and are HMAC-SHA256 stored. Shared PostgreSQL counters
+   enforce a 60-second per-email resend cooldown, five sends/hour/email, 80
+   sends/day globally, ten verification attempts/15 minutes/email and 120 auth
+   operations/minute globally. Resending rotates the code. The native HTTPS
+   Resend-compatible adapter awaits provider acknowledgement with an eight-second
+   timeout and rejects redirects/errors. Per-invocation acknowledgement detects
+   Better Auth's swallowed mail-callback failures, removes the unusable code and
+   returns an honest 503. Tests inject a memory sink or IPC-only provider mock.
+   No codes/credentials are logged; there is no debug mail endpoint or live send.
+7. **Ownership and recovery.** HTTP and service boundaries require verified
+   authorization. Transactions lock/recheck sessions, derive ownership/email,
+   preserve UUID locking, original snapshots, distributed limits and audit
+   append, and check ownership before returning an existing receipt. Forged
+   ownership and cross-account recovery are denied. Historical guests are never
+   claimed by email. Uncertain submissions retain identical retry while access
+   remains valid. Authorization loss clears personal drafts and retains only a
+   recovery reference for that customer's My Account check; it never retries
+   automatically or creates an automatic replacement request.
+8. **My Account.** `/account` starts with an empty private shell. Protected APIs
+   return only the current customer's paginated request/appointment references,
+   statuses, original product context and messages. Appointments show preferred
+   and confirmed Cairo times, type and active verified boutique destinations
+   when relevant. Name/optional phone can be updated safely; verified email,
+   stable identity and historical request contacts cannot change. Staff
+   assignment, internal notes and administrator data are excluded.
+9. **Headers and responsive results.** Both public headers provide Sign In or
+   the Account menu with My Account/Sign Out. Consultation/mobile controls remain
+   available. A minimal wordmark breakpoint adjustment avoids clipping. Checks
+   passed at 320, 375, 768, 1024 and 1440px, plus 1536/1920px full-wordmark checks.
+   Native date/time contrast, keyboard focus and picker assertions remain intact.
+10. **Privacy and security tests.** Private responses use `private, no-store`.
+    Fresh database checks guard restoration/focus; hidden tabs hide private views.
+    Stale generations and unmounted saves are canceled. Visible sessions are
+    periodically rechecked and cleared at absolute expiry. Identity changes
+    remount account views. Logout hides other tabs immediately and confirms
+    database revocation before acknowledging success. Tests cover real background
+    visibility, revocation/expiry, Back/Forward/persisted pageshow, switching,
+    delayed account/request responses, authorization-denial draft clearing,
+    profile immutability, SQL denial, guest preservation and open redirects.
+11. **Verification.** All **400 distinct integration tests** passed across full
+    and targeted reruns on disposable **PostgreSQL 18.6**: customer auth/history,
+    requests/uncertainty, administrators, migrations/upgrade/checksums,
+    catalogue/media/taxonomy/stock, Rings assets, cart/checkout/orders/payments,
+    quotation-only payment blocking, staging preparation, runtime permissions
+    and encrypted backup/restore. All **77 distinct browser cases** passed across
+    full and targeted runs: customer flows/privacy, existing requests/inbox,
+    navigation/native controls, administrators/products, quotation policy and
+    Rings. Lint (zero warnings), TypeScript (`--noEmit --incremental false`),
+    production build and `git diff --check` passed. Browser plugin was unavailable;
+    cached Playwright exercised the production Next server over disposable HTTPS.
+    Its in-process Chromium controller provided real tab visibility. Older
+    fixtures now authenticate for protected forms and account for additive
+    migrations; historical grant guards and business assertions were retained.
+12. **Costs and dependencies.** No dependency/version change, email SDK, queue,
+    worker or hosted infrastructure was added. A lazy customer pool uses at most
+    four connections per application process; expired rows have bounded
+    opportunistic cleanup. Future use consumes existing database/email capacity.
+    No paid provisioning or live email operation occurred during this task.
+13. **Activation prerequisites.** Separately approve the provider/domain, verified
+    sender, dedicated sending key, independent random customer secret, restricted
+    runtime login and hosted migration/grants. Verify live delivery and abuse
+    controls in separately authorized acceptance; review backup access to the new
+    auth tables and the customer-data retention policy. Example defaults remain
+    `CUSTOMER_AUTH_ENABLED=false` and `CUSTOMER_EMAIL_APPROVED=false`. No real
+    configuration, Google secrets, IAM or Cloud Run resources were altered.
+14. **Cleanup.** Disposable databases/roles, the task-owned database container,
+    both task-owned anonymous volumes, local TLS material, temporary tool
+    transports, logs and browser captures were removed. Docker lifecycle metadata
+    proved ownership of the earlier orphan volume before deletion. Task listener
+    checks returned zero, and Docker Desktop returned to its original stopped
+    state. Pre-existing Rings artifacts, unrelated containers/volumes and cached
+    images were preserved. No hosted record or real customer was created.
+15. **Git status.** `master`/HEAD remain at the baseline. Source changes are local,
+    unstaged and uncommitted. No commit, push, deployment or hosted write occurred.
+16. **Result.** PASS for the requested local implementation. Hosted activation
+    remains pending separate approval and the prerequisites above.
+
+Modified files (32):
+
+- `.env.example`
+- `docs/database-schema.md`
+- `docs/production-readiness.md`
+- `infra/cloud-run/migrations.sha256.json`
+- `package.json`
+- `scripts/prepare-staging.mts`
+- `src/app/layout.tsx`
+- `src/app/globals.css`
+- `src/app/robots.ts`
+- `src/components/SiteHeader.tsx`
+- `src/components/catalogue/CatalogueHeader.tsx`
+- `src/components/requests/RequestEntry.tsx`
+- `src/components/requests/RequestExperienceProvider.tsx`
+- `src/components/requests/RequestForm.tsx`
+- `src/lib/admin/rate-limit.ts`
+- `src/lib/requests/http.ts`
+- `src/lib/requests/repository.ts`
+- `tests/admin.test.mts`
+- `tests/consultation-controls.browser.mts`
+- `tests/database.test.mts`
+- `tests/helpers/admin-browser.mts`
+- `tests/helpers/request-fixture.mts`
+- `tests/readiness.test.mts`
+- `tests/request-experience.browser.mts`
+- `tests/request-inbox-experience.browser.mts`
+- `tests/request-outcomes.test.mts`
+- `tests/requests.browser.mts`
+- `tests/requests.test.mts`
+- `tests/rings-category.browser.mts`
+- `tests/runtime-roles.test.mts`
+- `tests/staging-app-role.test.mts`
+- `tests/staging.test.mts`
+
+Created files (25):
+
+- `db/migrations/0014_customer_authentication.sql`
+- `infra/neon/customer-runtime-grants.review.sql`
+- `src/app/(account)/account/page.tsx`
+- `src/app/(account)/account/sign-in/page.tsx`
+- `src/app/(account)/layout.tsx`
+- `src/app/api/account/[[...path]]/route.ts`
+- `src/app/api/customer-auth/[...all]/route.ts`
+- `src/components/customer/CustomerAccount.tsx`
+- `src/components/customer/CustomerAccountMenu.tsx`
+- `src/components/customer/CustomerAuthForm.tsx`
+- `src/components/customer/CustomerSessionProvider.tsx`
+- `src/components/customer/customer.module.css`
+- `src/lib/auth/rate-limit.ts`
+- `src/lib/customer/account.ts`
+- `src/lib/customer/auth.ts`
+- `src/lib/customer/authorization.ts`
+- `src/lib/customer/config.ts`
+- `src/lib/customer/email.ts`
+- `src/lib/customer/http.ts`
+- `src/lib/customer/intent.ts`
+- `src/lib/customer/runtime.ts`
+- `tests/customer-auth.browser.mts`
+- `tests/customer-auth.test.mts`
+- `tests/helpers/customer-email-mock.mts`
+- `tests/helpers/customer-fixture.mts`
+
+### Customer authentication source checkpoint — 2026-11-11
+
+The preceding acceptance entry records the local implementation before this
+source checkpoint. This checkpoint authorizes one source commit and a normal
+push to the existing `origin/master`; it does not authorize activation or hosted
+changes. The 32 modified and 25 new files were reviewed against baseline
+`77e8d1c1c24c00e935783e350c1379630e3a035d`. The additional readiness material below
+changes documentation only. No application dependency or existing migration,
+administrator authentication configuration, Rings asset, Cloudinary configuration
+or payment/order/inventory implementation was changed during the checkpoint.
+
+#### Exact server-side configuration
+
+These names are read by `src/lib/customer/config.ts` and `email.ts`. Keep them
+server-only; no `NEXT_PUBLIC_` customer credential is required or permitted.
+
+| Variable | Required configuration before separately approved activation |
+| --- | --- |
+| `CUSTOMER_AUTH_ENABLED` | Defaults off; only the exact value `true` enables the customer runtime. Keep `false` for this checkpoint. |
+| `CUSTOMER_DATABASE_URL` | Dedicated restricted customer-runtime PostgreSQL connection, with verified TLS for hosted use. Migration 0014 and reviewed permissions must already be installed under separate authorization. |
+| `CUSTOMER_AUTH_SECRET` | Independent cryptographically random secret, preferably 32 random bytes encoded as 43-character base64url. Validator accepts 43–128 base64url characters with diversity checks; it must differ from `BETTER_AUTH_SECRET`. |
+| `BETTER_AUTH_URL` | Existing canonical HTTPS application origin, without credentials, query, fragment or a non-root path. Customer and administrator endpoints share this origin while retaining separate identities and secrets. |
+| `CUSTOMER_EMAIL_APPROVED` | Defaults off; only `true` permits construction of the live email adapter. Keep `false` for this checkpoint. |
+| `CUSTOMER_EMAIL_API_KEY` | Approved dedicated Resend sending credential. Never commit its value or expose it to browser code/logs. |
+| `CUSTOMER_EMAIL_FROM` | Bare sender email address on the verified sending domain; the current validator does not accept a display-name form. |
+
+`NODE_ENV=production` is the existing runtime setting. The existing
+`BETTER_AUTH_SECRET` remains administrator-only and must not be repurposed or
+changed. No SMTP host/user/password, provider-base-URL or queue setting is read.
+`CUSTOMER_BROWSER_PRELOAD` belongs only to guarded disposable tests and is not
+production configuration. Both activation flags remain false in `.env.example`.
+
+#### Transactional email connection checklist — preparation only
+
+1. Obtain separate approval for the provider, sending domain/subdomain, sender
+   and credential custody. The implemented adapter targets Resend's
+   `POST https://api.resend.com/emails`; another provider requires an adapter
+   change and new verification, rather than different SMTP variables.
+   [Sending API contract](https://resend.com/docs/api-reference/emails/send-email).
+2. After approval, verify the owned sending domain using the exact provider DNS
+   records for DKIM/SPF and review DMARC. Preserve existing mail DNS and wait for
+   verified status. [Domain verification](https://resend.com/docs/add-a-domain).
+3. Use a dedicated sending key restricted to the approved domain where supported,
+   and choose the bare sender address. Keep its value in approved server-side
+   secret custody outside Git. [API key management](https://resend.com/docs/dashboard/api-keys/introduction).
+4. Separately review/provision the restricted customer database identity, migration
+   0014, grants, independent secret, backup access to new auth tables and customer
+   data retention. Confirm the canonical HTTPS origin without changing admin auth.
+5. Review provider quotas/cost limits and the existing application send/attempt
+   limits. Keep codes and recipient details out of application logs. Rehearse
+   provider errors/timeouts with mocks and retain honest failure responses.
+6. Only after separate live-test authorization, verify receipt in controlled
+   inboxes, expiry/replay/resend behavior, login/logout and request ownership.
+   An API acknowledgement confirms provider acceptance, not final inbox delivery.
+7. Enable the two flags only in a separately approved activation/deployment after
+   all prerequisites and acceptance checks pass. Neither flag is enabled by
+   this commit or push. No provider account, live send, Google secret, hosted
+   migration/grant or Cloud Run change is part of this checkpoint.
+
+#### Checkpoint verification
+
+The fresh checkpoint run passed **283/283 integration tests** on disposable
+PostgreSQL **18.6**, covering customer/admin isolation, OTP handling, ownership,
+guest preservation, all five request journeys, uncertainty/idempotency,
+administrator request handling, Rings assets/public catalogue, Cloudinary/media,
+migrations and quotation-only checkout/payment safeguards. The **45/45 browser
+tests** passed against the production Next build over disposable local HTTPS,
+using the in-memory email mock and cached Playwright Chromium (Browser plugin
+unavailable). They cover selected-ring return, mobile/desktop navigation, expiry,
+real background restoration, switching, stale responses and request recovery.
+Lint, TypeScript, production build and whitespace checks passed. Candidate-file
+review found no real credentials, copied local secret values, customer records,
+temporary artifacts or dependency changes. These fresh results supplement the
+earlier full implementation acceptance; they do not claim a hosted email test.

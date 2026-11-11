@@ -4,6 +4,8 @@ import { loadJewel } from "../../lib/catalogue/storefront.ts";
 import type { RequestKind } from "../../lib/requests/types.ts";
 import { RequestForm, type RequestProduct } from "./RequestForm";
 import styles from "./request.module.css";
+import { CustomerGate } from "../customer/CustomerSessionProvider";
+import { customerReturn } from "../../lib/customer/intent";
 
 export type RequestQuery = Record<string,string | string[] | undefined>;
 export async function RequestEntry({ searchParams, consultation = false }: { searchParams: Promise<RequestQuery>; consultation?: boolean }) {
@@ -11,10 +13,11 @@ export async function RequestEntry({ searchParams, consultation = false }: { sea
   const query = await searchParams;
   // Only these parameters describe the request. Campaign and referral parameters
   // belong to their callers, and may contain repeated values of their own.
-  const validOwnedValues = ["intent", "product", "variant"].every((key) => query[key] === undefined || typeof query[key] === "string" && query[key].trim().length > 0);
+  const validOwnedValues = ["intent", "product", "variant", "channel"].every((key) => query[key] === undefined || typeof query[key] === "string" && query[key].trim().length > 0);
   const validIntent = query.intent === undefined || typeof query.intent === "string" && ["QUOTATION", "MODIFICATION", "BESPOKE", "CONSULTATION"].includes(query.intent);
   const intent = consultation ? "CONSULTATION" : query.intent || (query.product ? "QUOTATION" : "BESPOKE");
-  if (!validOwnedValues || !validIntent || typeof intent !== "string") return <section className={styles.root}><p role="alert">This request link is not valid. Please choose a piece from the collections or start a new conversation below.</p><Link href="/contact">Start a conversation</Link></section>;
+  const validChannel = query.channel === undefined || intent === "CONSULTATION" && ["ZOOM", "BOUTIQUE"].includes(query.channel as string);
+  if (!validOwnedValues || !validIntent || !validChannel || typeof intent !== "string") return <section className={styles.root}><p role="alert">This request link is not valid. Please choose a piece from the collections or start a new conversation below.</p><Link href="/contact">Start a conversation</Link></section>;
   let product: RequestProduct | undefined;
   if (query.product) {
     const result = await loadJewel(query.product as string);
@@ -22,6 +25,8 @@ export async function RequestEntry({ searchParams, consultation = false }: { sea
     product = result.value;
   }
   if (!product && (intent === "QUOTATION" || intent === "MODIFICATION" || query.variant)) return <section className={styles.root}><p role="alert">Choose the piece and configuration you would like to discuss from its product page.</p><Link href="/collections">Explore the collections</Link></section>;
-  const draftKey = `${consultation ? "appointment" : "contact"}:${product?.id || "general"}:${intent}:${query.variant || ""}`;
-  return <RequestForm key={draftKey} draftKey={draftKey} product={product} initialKind={intent as RequestKind} initialVariant={typeof query.variant === "string" ? query.variant : undefined} consultation={consultation} />;
+  const channel = query.channel === "BOUTIQUE" ? "BOUTIQUE" : "ZOOM";
+  const draftKey = `${consultation ? "appointment" : "contact"}:${product?.id || "general"}:${intent}:${query.variant || ""}:${intent === "CONSULTATION" ? channel : ""}`;
+  const params = new URLSearchParams({ intent, ...(product ? { product: product.slug } : {}), ...(typeof query.variant === "string" ? { variant: query.variant } : {}), ...(intent === "CONSULTATION" ? { channel } : {}) });
+  return <CustomerGate returnTo={customerReturn(`${consultation ? "/appointment" : "/contact"}?${params}`)}><RequestForm key={draftKey} draftKey={draftKey} product={product} initialKind={intent as RequestKind} initialVariant={typeof query.variant === "string" ? query.variant : undefined} initialChannel={channel} consultation={consultation} /></CustomerGate>;
 }

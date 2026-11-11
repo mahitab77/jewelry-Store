@@ -1,13 +1,14 @@
 import "server-only";
 import { createHmac } from "node:crypto";
 import type { PoolClient } from "pg";
-import { getAdminRuntime, type AdminRuntime } from "../admin/runtime.ts";
+import { getCustomerRuntime, type CustomerRuntime } from "../customer/runtime.ts";
+import { requireCustomer, lockCustomer } from "../customer/authorization.ts";
 import { consume } from "../cart/repository.ts";
 import { fail, parseRequest, RequestError, submissionReference, type NormalizedRequest } from "./validation.ts";
 import type { ProductContext, RequestReceipt } from "./types.ts";
 
 export const requestTables = { QUOTATION: "product_enquiries", MODIFICATION: "bespoke_requests", BESPOKE: "bespoke_requests", CONSULTATION: "appointment_requests" } as const;
-const common = `r.id,r.contact_name AS name,r.contact_email AS email,r.contact_phone AS phone,r.message,r.status,
+const common = `r.id,r.customer_profile_id AS "customerProfileId",r.contact_name AS name,r.contact_email AS email,r.contact_phone AS phone,r.message,r.status,
   r.product_id AS "productId",r.variant_id AS "variantId",r.product_context AS "productContext",r.assigned_admin_id AS "assignedAdminId",
   to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "createdAt",
   to_char(r.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS revision`;
@@ -17,8 +18,14 @@ export const requestUnion = `SELECT ${common},'QUOTATION'::TEXT AS kind,NULL::TE
   to_char(r.preferred_start_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "preferredStart",
   to_char(r.confirmed_start_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "confirmedStart",r.boutique_location_id AS "boutiqueLocationId" FROM appointment_requests r`;
 const receipt = (reference: string): RequestReceipt => ({ reference, message: "Your request has been received. Our team will contact you to discuss the details. Pricing and appointments are subject to confirmation." });
+// Receipt reconciliation reads immutable submitted fields only. Customer SQL has
+// no privileges on assignments or staff-only update metadata.
+const receiptColumns = `id,customer_profile_id AS "customerProfileId",product_id AS "productId",variant_id AS "variantId",contact_name AS name,contact_email AS email,contact_phone AS phone,message`;
+const receiptUnion = `SELECT ${receiptColumns},'QUOTATION'::TEXT AS kind,NULL::TEXT AS channel,NULL::TEXT AS "preferredStart" FROM product_enquiries
+ UNION ALL SELECT ${receiptColumns},CASE WHEN product_id IS NULL THEN 'BESPOKE' ELSE 'MODIFICATION' END,NULL::TEXT,NULL::TEXT FROM bespoke_requests
+ UNION ALL SELECT ${receiptColumns},'CONSULTATION'::TEXT,consultation_channel,to_char(preferred_start_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') FROM appointment_requests`;
 
-async function throttle(input: NormalizedRequest | null, runtime: AdminRuntime) {
+async function throttle(input: NormalizedRequest | null, runtime: CustomerRuntime) {
   const client = await runtime.pool.connect();
   try {
     // Deliberately outside the request transaction: rejected submissions still
@@ -52,7 +59,11 @@ async function productContext(client: PoolClient, input: NormalizedRequest): Pro
   return snapshot;
 }
 
-export async function submitRequest(value: unknown, runtime: AdminRuntime = getAdminRuntime()): Promise<RequestReceipt> {
+export async function submitRequest(value: unknown, runtime: CustomerRuntime = getCustomerRuntime(), headers = new Headers()): Promise<RequestReceipt> {
+  const customer = await requireCustomer(headers, runtime);
+  // Authoritative verified email comes from the session, never a submitted ID or
+  // an editable contact address. Ownership is rechecked inside the transaction.
+  if (value && typeof value === "object" && !Array.isArray(value)) value = { ...value, email: customer.email };
   const submissionId = submissionReference(value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>).submissionId : undefined);
   let input: NormalizedRequest | null = null, validationError: RequestError | null = null;
   try { input = parseRequest(value); }
@@ -62,11 +73,12 @@ export async function submitRequest(value: unknown, runtime: AdminRuntime = getA
   let absent = false, businessWriteStarted = false, commitAttempted = false;
   try {
     await client.query("BEGIN");
+    await lockCustomer(client, customer);
     await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,1313))", [submissionId]);
-    const previous = (await client.query(`SELECT * FROM (${requestUnion}) q WHERE id=$1`, [submissionId])).rows;
+    const previous = (await client.query(`SELECT * FROM (${receiptUnion}) q WHERE id=$1`, [submissionId])).rows;
     if (previous.length) {
       const old = previous[0];
-      if (!input || previous.length !== 1 || old.kind !== input.kind || old.productId !== input.productId || old.variantId !== input.variantId || old.name !== input.name || old.email !== input.email || old.phone !== input.phone || old.message !== input.message || old.channel !== input.channel || old.preferredStart !== input.preferredStart) throw new RequestError("This submission reference has already been used. Keep the original request unchanged when recovering its receipt.", 409, undefined, { outcome: "CONFLICT" });
+      if (!input || previous.length !== 1 || old.customerProfileId !== customer.profileId || old.kind !== input.kind || old.productId !== input.productId || old.variantId !== input.variantId || old.name !== input.name || old.email !== input.email || old.phone !== input.phone || old.message !== input.message || old.channel !== input.channel || old.preferredStart !== input.preferredStart) throw new RequestError("This submission reference has already been used. Keep the original request unchanged when recovering its receipt.", 409, undefined, { outcome: "CONFLICT" });
       // Compare the immutable submitted data BEFORE checking today's catalogue,
       // preferred time or snapshot: a committed receipt survives later edits.
       commitAttempted = true; await client.query("COMMIT"); return receipt(submissionId);
@@ -76,10 +88,10 @@ export async function submitRequest(value: unknown, runtime: AdminRuntime = getA
     if (!input) throw new Error("Request validation did not produce a submission.");
     if (input.preferredStart && Date.parse(input.preferredStart) <= Date.now()) fail("Choose a future preferred time in Africa/Cairo.", 400, "preferredTime");
     const snapshot = await productContext(client, input), table = requestTables[input.kind];
-    const values: unknown[] = [input.submissionId, input.productId, input.variantId, input.name, input.email, input.phone, input.message, snapshot ? JSON.stringify(snapshot) : null];
+    const values: unknown[] = [input.submissionId, input.productId, input.variantId, input.name, input.email, input.phone, input.message, snapshot ? JSON.stringify(snapshot) : null, customer.profileId];
     businessWriteStarted = true;
-    await client.query(`INSERT INTO ${table}(id,product_id,variant_id,contact_name,contact_email,contact_phone,message,product_context${input.kind === "CONSULTATION" ? ",consultation_channel,preferred_start_at" : ""})
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8::JSONB${input.kind === "CONSULTATION" ? ",$9,$10" : ""})`, input.kind === "CONSULTATION" ? [...values, input.channel, input.preferredStart] : values);
+    await client.query(`INSERT INTO ${table}(id,product_id,variant_id,contact_name,contact_email,contact_phone,message,product_context,customer_profile_id${input.kind === "CONSULTATION" ? ",consultation_channel,preferred_start_at" : ""})
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8::JSONB,$9${input.kind === "CONSULTATION" ? ",$10,$11" : ""})`, input.kind === "CONSULTATION" ? [...values, input.channel, input.preferredStart] : values);
     await client.query(`INSERT INTO audit_events(actor_kind,action,target_table,target_id,metadata) VALUES('SYSTEM','REQUEST_RECEIVED',$1,$2,$3::JSONB)`, [table, input.submissionId, JSON.stringify({ kind: input.kind, productLinked: Boolean(input.productId), channel: input.channel })]);
     commitAttempted = true; await client.query("COMMIT"); return receipt(submissionId);
   } catch (error) {

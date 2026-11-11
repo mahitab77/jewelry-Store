@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
-import type { AdminRuntime } from "../src/lib/admin/runtime.ts";
+import type { CustomerRuntime } from "../src/lib/customer/runtime.ts";
 import { requestsHttp } from "../src/lib/requests/http.ts";
 import { RequestError } from "../src/lib/requests/validation.ts";
 
@@ -10,13 +10,13 @@ const value = () => ({ submissionId: randomUUID(), kind: "BESPOKE", name: "Local
 type Row = Record<string, unknown>;
 function fixture(intercept: (sql: string, values?: unknown[]) => Row[] | undefined = () => undefined) {
   const statements: string[] = [];
-  const runtime = { config: { baseURL: origin, secret: "local-outcome-fixture-only" }, pool: { async connect() {
+  const runtime = { auth: { api: { getSession: async () => ({ user: { id: '00000000-0000-4000-8000-000000000001' }, session: { id: '00000000-0000-4000-8000-000000000002', expiresAt: new Date(Date.now()+60000) } }) } }, config: { baseURL: origin, secret: "local-outcome-fixture-only" }, pool: { async query() { return { rows: [{ id: '00000000-0000-4000-8000-000000000001', profileId: '00000000-0000-4000-8000-000000000003', name: 'Local outcome fixture', email: 'local-outcome@boutique.test', phone: '' }] }; }, async connect() {
     return { async query(sql: string, values?: unknown[]) {
       statements.push(sql);
-      const rows = intercept(sql, values) ?? (sql.startsWith("INSERT INTO cart_rate_limits") ? [{ allowed: true }] : []);
+      const rows = intercept(sql, values) ?? (sql.startsWith("INSERT INTO cart_rate_limits") ? [{ allowed: true }] : sql.includes("SELECT s.id FROM customer_auth_sessions") ? [{ id: "local-session" }] : []);
       return { rows, rowCount: rows.length };
     }, release() {} };
-  } } } as unknown as AdminRuntime;
+  } } } as unknown as CustomerRuntime;
   async function send(input: unknown) {
     const response = await requestsHttp(new Request(origin + "/api/requests", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify(input) }), runtime);
     return { response, body: await response.json() };

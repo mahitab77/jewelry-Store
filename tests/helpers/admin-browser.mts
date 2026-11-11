@@ -15,22 +15,27 @@ import { paymentEnvironment } from "./paymob-mock.mts";
 import { orderFixture } from "./order-fixture.mts";
 import { requestFixture } from "./request-fixture.mts";
 import type { AdminRole } from "../../src/lib/admin/policy.ts";
+import type { attachCustomerFixture } from "./customer-fixture.mts";
 
 const moduleName = process.env.PLAYWRIGHT_MODULE ? pathToFileURL(resolve(process.env.PLAYWRIGHT_MODULE)).href : "playwright";
 const { chromium } = await import(moduleName);
 
 export function adminBrowserHarness(catalogue = false, cart = false, payments = false, orders = false, options: { seedCatalogue?: boolean; requests?: boolean } = {}) {
   let browser: Awaited<ReturnType<typeof chromium.launch>>;
-  let fixture: Awaited<ReturnType<typeof adminFixture>> & Partial<Pick<Awaited<ReturnType<typeof cartFixture>>, "cartUrl" | "readerUrl">> & Partial<Pick<Awaited<ReturnType<typeof paymentFixture>>, "paymentUrl">>;
+  let fixture: Awaited<ReturnType<typeof adminFixture>> & Partial<Pick<Awaited<ReturnType<typeof cartFixture>>, "cartUrl" | "readerUrl">> & Partial<Pick<Awaited<ReturnType<typeof paymentFixture>>, "paymentUrl">> & Partial<Awaited<ReturnType<typeof attachCustomerFixture>>>;
   let tls: Server;
   const servers: ChildProcess[] = [];
   let serverOutput = "";
   const secrets: string[] = [];
   const origin = "https://127.0.0.1:3443";
+  const customerEmails: { email: string; otp: string }[] = [];
   async function server(port: number, configured: boolean) {
     const preload = payments && configured ? ["--experimental-strip-types", "--import", pathToFileURL(resolve("tests/helpers/paymob-mock.mts")).href] : catalogue && configured ? ["--experimental-strip-types", "--import", pathToFileURL(resolve("tests/helpers/cloudinary-mock.mts")).href] : [];
-    const child = spawn(process.execPath, [...preload, resolve("node_modules/next/dist/bin/next"), "start", "--hostname", "127.0.0.1", "--port", String(port)], {
-      windowsHide: true, stdio: cart ? "pipe" : "ignore", env: { ...process.env,...Object.fromEntries(Object.keys(paymentEnvironment).map(key=>[key,""])),...(payments&&configured?paymentEnvironment:{}),
+    const child = spawn(process.execPath, [...(options.requests && configured ? ["--experimental-strip-types", "--import", pathToFileURL(resolve("tests/helpers/customer-email-mock.mts")).href] : []), ...preload, resolve("node_modules/next/dist/bin/next"), "start", "--hostname", "127.0.0.1", "--port", String(port)], {
+      windowsHide: true, stdio: options.requests && configured ? ["ignore","ignore","ignore","ipc"] : cart ? "pipe" : "ignore", env: { ...process.env,...Object.fromEntries(Object.keys(paymentEnvironment).map(key=>[key,""])),...(payments&&configured?paymentEnvironment:{}),
+        CUSTOMER_AUTH_ENABLED: options.requests && configured ? "true" : "false", CUSTOMER_DATABASE_URL: options.requests && configured ? fixture.customerConfig!.databaseUrl : "",
+        CUSTOMER_AUTH_SECRET: options.requests && configured ? fixture.customerConfig!.secret : "", CUSTOMER_EMAIL_APPROVED: options.requests && configured ? "true" : "false",
+        CUSTOMER_EMAIL_API_KEY: options.requests && configured ? "local-fixture-only" : "", CUSTOMER_EMAIL_FROM: "auth@boutique.test", CUSTOMER_BROWSER_PRELOAD: options.requests && configured ? "1" : "",
         PAYMENT_DATABASE_URL:payments&&configured?fixture.paymentUrl!:"",PAYMENTS_BROWSER_PRELOAD:payments&&configured?"1":"", NODE_ENV: "production", DATABASE_URL: cart && configured ? fixture.readerUrl! : catalogue && configured ? fixture.authConfig.databaseUrl : "",
         CART_DATABASE_URL: cart && configured ? fixture.cartUrl! : "", CART_ORIGIN: cart && configured ? origin : "",
         CHECKOUT_DRAFT_RETENTION_READY: cart && configured ? "true" : "",
@@ -41,6 +46,7 @@ export function adminBrowserHarness(catalogue = false, cart = false, payments = 
         CLOUDINARY_API_SECRET: catalogue && configured ? mockCloudinaryConfiguration.apiSecret : "",
         CATALOGUE_BROWSER_PRELOAD: catalogue && configured ? "1" : "" },
     });
+    child.on("message", (message: unknown) => { const m=message as {type?:string;email:string;otp:string}; if(m.type==='customer-code') customerEmails.push({email:m.email,otp:m.otp}); });
     if (cart) { child.stdout?.on("data", (data: Buffer) => { serverOutput += data.toString(); }); child.stderr?.on("data", (data: Buffer) => { serverOutput += data.toString(); }); }
     servers.push(child);
     for (let i = 0; i < 200; i++) {
@@ -73,7 +79,7 @@ export function adminBrowserHarness(catalogue = false, cart = false, payments = 
       assert.ok(!directory.startsWith(resolve(".") + sep), "Screenshots must stay outside the repository."); await mkdir(directory, { recursive: true });
     }
   }, { timeout: 90000 });
-  beforeEach(async () => { if (fixture) { await fixture.data.query("DELETE FROM admin_auth_rate_limits"); if (cart) await fixture.data.query("DELETE FROM cart_rate_limits"); } });
+  beforeEach(async () => { if (fixture) { await fixture.data.query("DELETE FROM admin_auth_rate_limits"); if (cart || options.requests) await fixture.data.query("DELETE FROM cart_rate_limits"); if(options.requests)await fixture.data.query("DELETE FROM customer_auth_rate_limits"); } });
   after(async () => {
     if (browser) await browser.close();
     if (tls) await new Promise<void>((done, reject) => tls.close((error) => error ? reject(error) : done()));
@@ -84,7 +90,10 @@ export function adminBrowserHarness(catalogue = false, cart = false, payments = 
       for (const secret of [...secrets, fixture?.cartUrl, fixture?.readerUrl, fixture?.paymentUrl].filter(Boolean) as string[]) assert.ok(!serverOutput.includes(secret), "A guest credential or personal fixture field appeared in temporary server output.");
     }
   });
-  return { origin, current: () => ({ browser, fixture }), trackSecret(value: string) { secrets.push(value); }, async signIn(page: Awaited<ReturnType<typeof browser.newPage>>, role: AdminRole = "OWNER") {
+  return { origin, current: () => ({ browser, fixture }), customerEmails, async customerContext(context: Awaited<ReturnType<typeof browser.newContext>>) {
+    assert.ok(fixture.customerHeaders);const cookie=fixture.customerHeaders.get('Cookie')!.split(';')[0],at=cookie.indexOf('=');
+    await context.addCookies([{name:cookie.slice(0,at),value:cookie.slice(at+1),url:origin,httpOnly:true,secure:true,sameSite:'Lax'}]);
+  }, trackSecret(value: string) { secrets.push(value); }, async signIn(page: Awaited<ReturnType<typeof browser.newPage>>, role: AdminRole = "OWNER") {
     await page.goto(origin + "/admin/login", { waitUntil: "networkidle" });
     await page.getByLabel("Email address", { exact: true }).fill(fixture.users[role].email);
     await page.getByLabel("Password", { exact: true }).fill(fixture.password);

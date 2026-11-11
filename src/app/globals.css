@@ -307,6 +307,13 @@ svg {
   text-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
 }
 
+@media (min-width: 1536px) {
+  .site-header > nav[aria-label="Primary navigation"] {
+    width: min(calc(100% - 2 * var(--page-inline)), 1400px);
+  }
+  .site-header .navbar-brand-text { font-size: 1.75rem; }
+}
+
 .navbar-cta,
 .hero-cta {
   position: relative;

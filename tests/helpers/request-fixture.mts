@@ -1,4 +1,5 @@
 import { catalogueFixture } from "./catalogue-fixture.mts";
+import { attachCustomerFixture } from "./customer-fixture.mts";
 
 export async function requestFixture(origin?: string, seeded = true) {
   const fixture = await catalogueFixture(origin, seeded);
@@ -11,6 +12,7 @@ export async function requestFixture(origin?: string, seeded = true) {
     }
     await fixture.data.query(`GRANT INSERT,UPDATE,DELETE ON cart_rate_limits TO ${role}`);
     await fixture.data.query(`GRANT UPDATE(updated_at) ON admin_users,boutique_locations TO ${role}`);
-    return fixture;
+    const customer = await attachCustomerFixture(fixture);
+    return { ...fixture, ...customer, async close() { await customer.closeCustomer(); await fixture.close(); } };
   } catch (error) { await fixture.close(); throw error; }
 }

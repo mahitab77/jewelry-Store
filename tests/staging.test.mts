@@ -33,7 +33,7 @@ test('offline CLI refuses overwrite/repository destinations and makes no partial
  await writeFile(config,JSON.stringify({...input,image:'invalid'}));assert.equal(run(join(dir,'invalid.json')).status,1);await assert.rejects(readFile(join(dir,'invalid.json')));
  }finally{await rm(dir,{recursive:true,force:true});}
 });
-test('fresh review SQL applies all 13 exact migrations and refuses replay/wrong targets',async()=>{
+test('fresh review SQL applies all 14 exact migrations and refuses replay/wrong targets',async()=>{
  const config=databaseConfig(process.env.TEST_DATABASE_URL);assert.ok(process.env.TEST_DATABASE_URL&&isLoopback(config.host??'')&&process.env.NODE_ENV!=='production');
  const maintenance=new pg.Pool(config),name='lapalme_test_staging_'+randomUUID().replaceAll('-',''),dir=await mkdtemp(join(tmpdir(),'lapalme-staging-sql-'));let db:pg.Pool|undefined,created=false;
  try{await maintenance.query(`CREATE DATABASE "${name}"`);created=true;const url=new URL(process.env.TEST_DATABASE_URL!);url.pathname='/'+name;db=new pg.Pool(databaseConfig(url.toString()));const script=join(dir,'review.sql'),review=await stagingMigrationReview();await writeFile(script,review);
